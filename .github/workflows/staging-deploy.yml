@@ -1,0 +1,61 @@
+name: Deploy (Staging)
+
+on:
+  push:
+    branches:
+      - staging
+
+concurrency:
+  group: deploy-staging
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: staging
+
+    steps:
+      - name: Deploy to staging server
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ vars.DEPLOY_HOST }}
+          username: ${{ vars.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          script: |
+            set -e
+
+            cd ${{ vars.DEPLOY_PATH }}
+
+            trap 'echo "==> Deploy failed"; php artisan up || true' ERR
+
+            echo "==> Down"
+            php artisan down --retry=15 || true
+
+            echo "==> Update code"
+            git fetch --all --prune
+            git reset --hard origin/staging
+
+            echo "==> Composer"
+            composer install --no-interaction --prefer-dist --no-dev --optimize-autoloader
+
+            echo "==> Frontend build"
+            npm ci
+            npm run build
+
+            echo "==> Laravel caches"
+            php artisan migrate --force
+            php artisan optimize:clear
+            php artisan filament:optimize-clear
+            php artisan config:cache
+            php artisan route:cache
+            php artisan view:cache
+            php artisan filament:optimize
+
+
+            echo "==> Restart queues"
+            php artisan queue:restart || true
+
+            echo "==> Up"
+            php artisan up
+
+            echo "==> Done"
