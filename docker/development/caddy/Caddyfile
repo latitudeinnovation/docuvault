@@ -1,0 +1,15 @@
+{
+    auto_https off
+}
+
+import /etc/caddy/Caddyfile.common
+
+# Local multi-domain setup without /etc/hosts.
+# Browsers resolve *.localhost to 127.0.0.1 automatically.
+docuvault.localhost:80, *.docuvault.localhost:80 {
+    import common
+    log {
+        output stdout
+        level DEBUG
+    }
+}

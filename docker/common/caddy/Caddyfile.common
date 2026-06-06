@@ -1,0 +1,35 @@
+{
+	# Optional: quiet the admin endpoint and disable telemetry
+	# admin off
+}
+
+(common) {
+	root * /var/www/public
+	encode zstd gzip
+	log
+
+	# phpMyAdmin served via subpath on same host.
+	handle_path /phpmyadmin* {
+		reverse_proxy phpmyadmin:80
+	}
+
+	# Static assets served directly
+	@static {
+	path /build/* /assets/* /storage/* /favicon.ico /robots.txt
+	}
+	
+	handle @static {
+		file_server
+	}
+
+	# Laravel app via PHP‑FPM in the "app" service
+	handle {
+		php_fastcgi app:9000 {
+			header_up X-Forwarded-Host  {host}
+			header_up X-Forwarded-Proto {header.X-Forwarded-Proto}
+			header_up X-Forwarded-Port  {header.X-Forwarded-Port}
+			header_up X-Forwarded-For   {remote}
+		}
+		file_server
+	}
+}
