@@ -19,6 +19,10 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        //
+        config()->set('livewire.temporary_file_upload.rules', [
+            'required',
+            'file',
+            'max:'.config('docuvault.documents.max_upload_size'),
+        ]);
     }
 }

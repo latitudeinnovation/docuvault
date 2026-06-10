@@ -10,6 +10,7 @@ services:
     env_file: [./.env]   # overridden in dev/staging via their files
     volumes:
       - .:/var/www
+      - ./docker/development/php-fpm/uploads.ini:/usr/local/etc/php/conf.d/99-uploads.ini:ro
     environment:
       TZ: Asia/Kuala_Lumpur
     depends_on: [db, redis]
