@@ -1,0 +1,86 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: ./docker/common/php-fpm/Dockerfile
+      target: development
+    container_name: docuvault-app
+    image: docuvault-app:local
+    restart: unless-stopped
+    env_file: [./.env]   # overridden in dev/staging via their files
+    volumes:
+      - .:/var/www
+      - ./docker/development/php-fpm/uploads.ini:/usr/local/etc/php/conf.d/99-uploads.ini:ro
+    environment:
+      TZ: Asia/Kuala_Lumpur
+    depends_on: [db, redis]
+    networks: [appnet]
+    expose: ["9000"]
+
+  web:
+    image: caddy:2-alpine
+    restart: unless-stopped    
+    container_name: docuvault-web
+    ports:
+      - "80:80" # app available on http://docuvault.localhost
+    environment:
+      TZ: Asia/Kuala_Lumpur
+    volumes:
+      - ./docker/development/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./docker/common/caddy/Caddyfile.common:/etc/caddy/Caddyfile.common:ro
+      - caddy-data:/data
+      - caddy-config:/config
+      - ./:/var/www:ro
+    expose:
+      - "80"      
+    depends_on: [app]
+    networks: [appnet]
+
+  db:
+    image: mariadb:11
+    command: --skip-log-bin
+    restart: unless-stopped    
+    container_name: docuvault-db
+    environment:
+      TZ: Asia/Kuala_Lumpur
+      MARIADB_DATABASE: docuvault
+      MARIADB_USER: docuvault
+      MARIADB_PASSWORD: docuvault
+      MARIADB_ROOT_PASSWORD: rootpass
+      MARIADB_ROOT_HOST: '%'
+      MARIADB_DISABLE_LOG_BIN: "1"
+    volumes:
+      - db-data:/var/lib/mysql
+      - ./docker/development/mariadb/my.cnf:/etc/mysql/conf.d/99-disable-binlog.cnf:ro
+    networks: [appnet]      
+
+  redis:
+    image: redis:7-alpine
+    container_name: docuvault-redis
+    networks: [appnet]
+
+  phpmyadmin:
+    image: arm64v8/phpmyadmin
+    platform: linux/arm64/v8
+    container_name: docuvault-phpmyadmin
+    restart: unless-stopped
+    ports:
+      - "8023:80"  # phpMyAdmin will be available on http://localhost:8023
+    environment:
+      PMA_HOST: db
+      PMA_ABSOLUTE_URI: http://docuvault.localhost/phpmyadmin/
+      MYSQL_ROOT_PASSWORD: rootpass
+      TZ: Asia/Kuala_Lumpur
+      UPLOAD_LIMIT: 512M
+    volumes:
+      - ./docker/development/phpmyadmin/config.user.inc.php:/etc/phpmyadmin/config.user.inc.php
+    depends_on: [db]
+    networks: [appnet]    
+
+volumes:
+  db-data:
+  caddy-data:
+  caddy-config:
+
+networks:
+  appnet:

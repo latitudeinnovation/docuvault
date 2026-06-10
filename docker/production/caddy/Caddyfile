@@ -1,0 +1,10 @@
+{
+    email admin@swataircond.com.my
+}
+
+import /etc/caddy/Caddyfile.common
+
+app.swataircond.com.my {
+    import common
+    tls admin@swataircond.com.my
+}

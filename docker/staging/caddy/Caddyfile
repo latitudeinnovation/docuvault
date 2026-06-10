@@ -1,0 +1,14 @@
+{
+	# Caddy is behind Nginx (which does HTTPS), so disable auto HTTPS
+	# auto_https off
+	# http_port 80	
+	# admin off   # (optional)
+}
+
+import /etc/caddy/Caddyfile.common
+
+# Bind the site explicitly to HTTP so Caddy never attempts TLS here
+:80 {
+	import common
+	# No tls {} block, no redirects
+}
