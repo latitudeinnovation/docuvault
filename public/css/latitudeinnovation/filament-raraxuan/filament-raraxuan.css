@@ -1,0 +1,116 @@
+.raraxuan-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+
+.raraxuan-toolbar {
+    display: flex;
+    justify-content: flex-end;
+}
+
+.raraxuan-grid {
+    display: grid;
+    gap: 1rem;
+}
+
+.raraxuan-grid--organization {
+    grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+}
+
+.raraxuan-grid--usage {
+    grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+}
+
+.raraxuan-label,
+.raraxuan-table th {
+    color: rgb(107 114 128);
+    font-size: 0.875rem;
+    font-weight: 500;
+    line-height: 1.25rem;
+}
+
+.raraxuan-value {
+    color: rgb(3 7 18);
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+    margin-top: 0.25rem;
+}
+
+.raraxuan-muted {
+    color: rgb(107 114 128);
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+}
+
+.raraxuan-table-wrapper {
+    overflow-x: auto;
+}
+
+.raraxuan-table {
+    border-collapse: collapse;
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+    width: 100%;
+}
+
+.raraxuan-table thead {
+    border-bottom: 1px solid rgb(229 231 235);
+}
+
+.raraxuan-table tbody tr {
+    border-bottom: 1px solid rgb(243 244 246);
+}
+
+.raraxuan-table th {
+    padding: 0.5rem 0.75rem;
+    text-align: left;
+    white-space: nowrap;
+}
+
+.raraxuan-table td {
+    color: rgb(55 65 81);
+    padding: 0.75rem;
+    vertical-align: top;
+}
+
+.raraxuan-table .raraxuan-table-primary,
+.raraxuan-variable-name {
+    color: rgb(3 7 18);
+    font-weight: 500;
+}
+
+.raraxuan-variable-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.raraxuan-variable-description {
+    color: rgb(107 114 128);
+}
+
+:is(.dark .raraxuan-label),
+:is(.dark .raraxuan-table th),
+:is(.dark .raraxuan-muted),
+:is(.dark .raraxuan-variable-description) {
+    color: rgb(156 163 175);
+}
+
+:is(.dark .raraxuan-value),
+:is(.dark .raraxuan-table .raraxuan-table-primary),
+:is(.dark .raraxuan-variable-name) {
+    color: rgb(255 255 255);
+}
+
+:is(.dark .raraxuan-table td) {
+    color: rgb(209 213 219);
+}
+
+:is(.dark .raraxuan-table thead) {
+    border-bottom-color: rgb(55 65 81);
+}
+
+:is(.dark .raraxuan-table tbody tr) {
+    border-bottom-color: rgb(31 41 55);
+}

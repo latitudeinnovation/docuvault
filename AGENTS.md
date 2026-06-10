@@ -107,6 +107,13 @@ This project has domain-specific skills available in `**/skills/**`. You MUST ac
 
 - Laravel can be deployed using [Laravel Cloud](https://cloud.laravel.com/), which is the fastest way to deploy and scale production Laravel applications.
 
+=== tests rules ===
+
+# Test Policy
+- Do not create new test files unless the user explicitly asks for tests.
+- Do not run tests automatically after every code change. Run tests only when explicitly requested, when a test file is changed, or when the change is high risk and verification is necessary.
+- When tests are needed, run the minimum number of tests needed to ensure code quality and speed. Use `php artisan test --compact` with a specific filename or filter.
+
 === laravel/core rules ===
 
 # Do Things the Laravel Way
@@ -157,7 +164,8 @@ This project has domain-specific skills available in `**/skills/**`. You MUST ac
 
 ## Running Tests
 
-- Run the minimal number of tests, using an appropriate filter, before finalizing.
+- Run tests only when requested or when the change specifically updates test coverage.
+- When running tests, use the minimal number of tests with an appropriate filter.
 - To run all tests: `php artisan test --compact`.
 - To run all tests in a file: `php artisan test --compact tests/Feature/ExampleTest.php`.
 - To filter on a particular test name: `php artisan test --compact --filter=testName` (recommended after making a change to a related file).
