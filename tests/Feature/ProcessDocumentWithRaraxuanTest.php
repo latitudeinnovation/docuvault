@@ -16,7 +16,7 @@ class ProcessDocumentWithRaraxuanTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_successful_processing_stores_raw_json_fields_and_filename_payload(): void
+    public function test_sends_document_as_multipart_and_stores_results(): void
     {
         config()->set('raraxuan.base_url', 'https://ai.raraxuan.test/api');
         config()->set('raraxuan.api_key', 'rx_test_key');
@@ -27,14 +27,16 @@ class ProcessDocumentWithRaraxuanTest extends TestCase
 
         Http::fake([
             'https://ai.raraxuan.test/api/v1/prompts/process' => Http::response([
-                'confidence' => 0.91,
-                'fields' => [
-                    [
-                        'key' => 'customer_name',
-                        'label' => 'Customer Name',
-                        'value' => 'ABC Sdn Bhd',
-                        'confidence' => 0.95,
-                    ],
+                'success' => true,
+                'data' => [
+                    'result' => json_encode([
+                        'document_type' => 'HLB PRIMEBIZ CURRENT ACCOUNT',
+                        'extracted_fields' => [
+                            'account_number' => '21200033993',
+                            'customer_name' => 'AAD CONCEPT SDN BHD',
+                        ],
+                        'overall_confidence' => 0.95,
+                    ]),
                 ],
             ]),
         ]);
@@ -48,31 +50,42 @@ class ProcessDocumentWithRaraxuanTest extends TestCase
 
         (new ProcessDocumentWithRaraxuan($document))->handle();
 
-        Http::assertSent(fn ($request): bool => $request->url() === 'https://ai.raraxuan.test/api/v1/prompts/process'
-            && $request['template'] === 'doc-universal-extractor'
-            && $request['variables']['filename'] === 'sample.pdf'
-            && count($request['variables']) === 1
-            && ! array_key_exists('document_id', $request['variables'])
-            && ! array_key_exists('file_base64', $request['variables'])
-            && ! array_key_exists('instructions', $request['variables'])
-            && ! array_key_exists('file_url', $request['variables']));
+        Http::assertSent(function ($request): bool {
+            $parts = collect($request->data());
+
+            $template = $parts->firstWhere('name', 'template');
+            $filename = $parts->firstWhere('name', 'variables[filename]');
+            $file = $parts->firstWhere('name', 'file');
+
+            return $request->url() === 'https://ai.raraxuan.test/api/v1/prompts/process'
+                && $request->isMultipart()
+                && ($template['contents'] ?? null) === 'doc-universal-extractor'
+                && ($filename['contents'] ?? null) === 'sample.pdf'
+                && $file !== null
+                && (string) ($file['contents'] ?? '') === 'private document bytes';
+        });
 
         $document->refresh();
 
         $this->assertSame(DocumentStatus::NeedsReview, $document->status);
-        $this->assertSame('0.9100', $document->ai_confidence);
-        $this->assertSame(0.91, $document->ai_raw_json['confidence']);
+        $this->assertSame('0.9500', $document->ai_confidence);
         $this->assertNotNull($document->processed_at);
         $this->assertDatabaseHas(ExtractedField::class, [
             'document_id' => $document->id,
-            'field_key' => 'customer_name',
-            'field_label' => 'Customer Name',
-            'value' => 'ABC Sdn Bhd',
+            'field_key' => 'extracted_fields.account_number',
+            'field_label' => 'Account Number',
+            'value' => '21200033993',
             'status' => ExtractedFieldStatus::Pending->value,
+        ]);
+        $this->assertDatabaseHas(ExtractedField::class, [
+            'document_id' => $document->id,
+            'field_key' => 'document_type',
+            'field_label' => 'Document Type',
+            'value' => 'HLB PRIMEBIZ CURRENT ACCOUNT',
         ]);
     }
 
-    public function test_successful_processing_extracts_fields_from_nested_plugin_result(): void
+    public function test_flattens_every_json_field_and_skips_empty_containers(): void
     {
         config()->set('raraxuan.base_url', 'https://ai.raraxuan.test/api');
         config()->set('raraxuan.api_key', 'rx_test_key');
@@ -86,18 +99,14 @@ class ProcessDocumentWithRaraxuanTest extends TestCase
                 'success' => true,
                 'data' => [
                     'result' => json_encode([
-                        'document_type' => 'Bank Account Statement',
-                        'fields' => [
-                            'account_number' => [
-                                'value' => '123-456-7890',
-                                'confidence' => 0.99,
-                            ],
-                            'currency' => [
-                                'value' => 'MYR',
-                                'confidence' => 0.98,
-                            ],
+                        'total_pages' => 4,
+                        'extracted_fields' => [
+                            'customer_name' => 'AAD CONCEPT SDN BHD',
+                            'transaction_table_headers' => ['Date', 'Description', 'Deposit', 'Withdrawal', 'Balance'],
                         ],
-                        'overall_confidence' => 0.97,
+                        'tables' => [],
+                        'signatures' => [],
+                        'overall_confidence' => 0.95,
                     ]),
                 ],
             ]),
@@ -115,23 +124,33 @@ class ProcessDocumentWithRaraxuanTest extends TestCase
         $document->refresh();
 
         $this->assertSame(DocumentStatus::NeedsReview, $document->status);
-        $this->assertSame('0.9700', $document->ai_confidence);
-        $this->assertSame('Bank Account Statement', $document->ai_raw_json['normalized_result']['document_type']);
+
+        // Nested fields are flattened with dotted keys, scalar lists are joined.
         $this->assertDatabaseHas(ExtractedField::class, [
             'document_id' => $document->id,
-            'field_key' => 'account_number',
-            'field_label' => 'Account Number',
-            'value' => '123-456-7890',
-            'confidence' => '0.9900',
-            'status' => ExtractedFieldStatus::Pending->value,
+            'field_key' => 'extracted_fields.customer_name',
+            'field_label' => 'Customer Name',
+            'value' => 'AAD CONCEPT SDN BHD',
         ]);
         $this->assertDatabaseHas(ExtractedField::class, [
             'document_id' => $document->id,
-            'field_key' => 'currency',
-            'field_label' => 'Currency',
-            'value' => 'MYR',
-            'confidence' => '0.9800',
-            'status' => ExtractedFieldStatus::Pending->value,
+            'field_key' => 'extracted_fields.transaction_table_headers',
+            'value' => 'Date, Description, Deposit, Withdrawal, Balance',
+        ]);
+        $this->assertDatabaseHas(ExtractedField::class, [
+            'document_id' => $document->id,
+            'field_key' => 'total_pages',
+            'value' => '4',
+        ]);
+
+        // Empty containers produce no rows.
+        $this->assertDatabaseMissing(ExtractedField::class, [
+            'document_id' => $document->id,
+            'field_key' => 'tables',
+        ]);
+        $this->assertDatabaseMissing(ExtractedField::class, [
+            'document_id' => $document->id,
+            'field_key' => 'signatures',
         ]);
     }
 
