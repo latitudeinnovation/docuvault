@@ -40,7 +40,7 @@ class DocumentsTable
                     ->badge()
                     ->sortable(),
                 TextColumn::make('ai_confidence')
-                    ->label('AI confidence')
+                    ->label('Completeness')
                     ->numeric(decimalPlaces: 2)
                     ->sortable(),
                 TextColumn::make('created_at')

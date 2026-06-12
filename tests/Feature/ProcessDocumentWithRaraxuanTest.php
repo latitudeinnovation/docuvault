@@ -68,7 +68,9 @@ class ProcessDocumentWithRaraxuanTest extends TestCase
         $document->refresh();
 
         $this->assertSame(DocumentStatus::NeedsReview, $document->status);
-        $this->assertSame('0.9500', $document->ai_confidence);
+        // ai_confidence is now a computed completeness score (non-null leaf ratio),
+        // not the model's self-reported overall_confidence. Both fields non-null => 1.0000.
+        $this->assertSame('1.0000', $document->ai_confidence);
         $this->assertNotNull($document->processed_at);
 
         // Only the marked extracted_fields are surfaced, with clean keys.
@@ -156,6 +158,77 @@ class ProcessDocumentWithRaraxuanTest extends TestCase
             'field_key' => 'tables',
         ]);
         $this->assertSame(2, $document->extractedFields()->count());
+    }
+
+    public function test_flattens_tables_into_field_rows_and_scores_completeness(): void
+    {
+        config()->set('raraxuan.base_url', 'https://ai.raraxuan.test/api');
+        config()->set('raraxuan.api_key', 'rx_test_key');
+        config()->set('docuvault.raraxuan.document_agent', 'doc-universal-extractor');
+
+        Storage::fake('local');
+        Storage::disk('local')->put('documents/ssm.pdf', 'private document bytes');
+
+        Http::fake([
+            'https://ai.raraxuan.test/api/v1/prompts/process' => Http::response([
+                'success' => true,
+                'data' => [
+                    'result' => json_encode([
+                        'document_type' => 'Account Statement',
+                        'extracted_fields' => [
+                            'account_number' => '8881051766214',
+                        ],
+                        'tables' => [
+                            [
+                                'table_name' => 'ACCOUNT SUMMARY',
+                                'data' => [
+                                    ['CATEGORY' => 'OPENING BALANCE', 'NO. OF TRANSACTION' => null, 'BALANCE' => '11307.19'],
+                                    ['CATEGORY' => 'TOTAL DEBITS', 'NO. OF TRANSACTION' => '28', 'BALANCE' => '1464008.00'],
+                                ],
+                            ],
+                        ],
+                        'overall_confidence' => 1.0,
+                    ]),
+                ],
+            ]),
+        ]);
+
+        $document = Document::factory()->create([
+            'file_disk' => 'local',
+            'file_path' => 'documents/ssm.pdf',
+            'file_type' => 'application/pdf',
+            'original_file_name' => 'ssm.pdf',
+        ]);
+
+        (new ProcessDocumentWithRaraxuan($document))->handle();
+
+        $document->refresh();
+
+        $this->assertSame(DocumentStatus::NeedsReview, $document->status);
+
+        // extracted_fields still surface.
+        $this->assertDatabaseHas(ExtractedField::class, [
+            'document_id' => $document->id,
+            'field_key' => 'account_number',
+            'value' => '8881051766214',
+        ]);
+
+        // Table rows now flatten into field rows keyed by table_name + index + column.
+        $this->assertDatabaseHas(ExtractedField::class, [
+            'document_id' => $document->id,
+            'field_key' => 'ACCOUNT SUMMARY.0.CATEGORY',
+            'value' => 'OPENING BALANCE',
+        ]);
+        $this->assertDatabaseHas(ExtractedField::class, [
+            'document_id' => $document->id,
+            'field_key' => 'ACCOUNT SUMMARY.1.BALANCE',
+            'value' => '1464008.00',
+        ]);
+
+        // Completeness reflects real coverage: one null table cell drops it below 1.0,
+        // ignoring the model's self-reported overall_confidence of 1.0.
+        // Leaves: account_number(1) + table_name(1) + 6 cells = 8, one null => 7/8 = 0.8750.
+        $this->assertSame('0.8750', $document->ai_confidence);
     }
 
     public function test_processing_failure_marks_document_failed(): void
