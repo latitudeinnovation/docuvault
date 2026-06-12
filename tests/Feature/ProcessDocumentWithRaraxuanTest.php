@@ -70,19 +70,27 @@ class ProcessDocumentWithRaraxuanTest extends TestCase
         $this->assertSame(DocumentStatus::NeedsReview, $document->status);
         $this->assertSame('0.9500', $document->ai_confidence);
         $this->assertNotNull($document->processed_at);
+
+        // Only the marked extracted_fields are surfaced, with clean keys.
         $this->assertDatabaseHas(ExtractedField::class, [
             'document_id' => $document->id,
-            'field_key' => 'extracted_fields.account_number',
+            'field_key' => 'account_number',
             'field_label' => 'Account Number',
             'value' => '21200033993',
             'status' => ExtractedFieldStatus::Pending->value,
         ]);
         $this->assertDatabaseHas(ExtractedField::class, [
             'document_id' => $document->id,
-            'field_key' => 'document_type',
-            'field_label' => 'Document Type',
-            'value' => 'HLB PRIMEBIZ CURRENT ACCOUNT',
+            'field_key' => 'customer_name',
+            'value' => 'AAD CONCEPT SDN BHD',
         ]);
+
+        // Schema envelope keys must NOT become field rows.
+        $this->assertDatabaseMissing(ExtractedField::class, [
+            'document_id' => $document->id,
+            'field_key' => 'document_type',
+        ]);
+        $this->assertSame(2, $document->extractedFields()->count());
     }
 
     public function test_flattens_every_json_field_and_skips_empty_containers(): void
@@ -125,33 +133,29 @@ class ProcessDocumentWithRaraxuanTest extends TestCase
 
         $this->assertSame(DocumentStatus::NeedsReview, $document->status);
 
-        // Nested fields are flattened with dotted keys, scalar lists are joined.
+        // Marked fields surfaced with clean keys; scalar lists joined.
         $this->assertDatabaseHas(ExtractedField::class, [
             'document_id' => $document->id,
-            'field_key' => 'extracted_fields.customer_name',
+            'field_key' => 'customer_name',
             'field_label' => 'Customer Name',
             'value' => 'AAD CONCEPT SDN BHD',
         ]);
         $this->assertDatabaseHas(ExtractedField::class, [
             'document_id' => $document->id,
-            'field_key' => 'extracted_fields.transaction_table_headers',
+            'field_key' => 'transaction_table_headers',
             'value' => 'Date, Description, Deposit, Withdrawal, Balance',
         ]);
-        $this->assertDatabaseHas(ExtractedField::class, [
+
+        // Schema envelope / empty containers must NOT produce rows.
+        $this->assertDatabaseMissing(ExtractedField::class, [
             'document_id' => $document->id,
             'field_key' => 'total_pages',
-            'value' => '4',
         ]);
-
-        // Empty containers produce no rows.
         $this->assertDatabaseMissing(ExtractedField::class, [
             'document_id' => $document->id,
             'field_key' => 'tables',
         ]);
-        $this->assertDatabaseMissing(ExtractedField::class, [
-            'document_id' => $document->id,
-            'field_key' => 'signatures',
-        ]);
+        $this->assertSame(2, $document->extractedFields()->count());
     }
 
     public function test_processing_failure_marks_document_failed(): void

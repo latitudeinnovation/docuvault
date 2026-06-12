@@ -119,17 +119,28 @@ class ProcessDocumentWithRaraxuan implements ShouldQueue
     }
 
     /**
-     * Recursively flatten every leaf value in the AI result into a readable
-     * key => value field row, so the whole JSON shows in the extracted fields
-     * table regardless of how the template nests it (e.g. under
-     * `extracted_fields`). Empty containers are skipped; scalar lists are
-     * joined into a single value.
+     * Turn the AI result into readable key => value field rows.
+     *
+     * The template wraps the extracted values in an `extracted_fields` object
+     * alongside schema scaffolding (document_type, total_pages, tables, ...).
+     * When that container is present we surface only its contents, so the
+     * review table shows the marked/annotated values and not the envelope.
+     * Otherwise we fall back to flattening the whole response. Nested keys
+     * become dotted paths, scalar lists are joined, empty containers skipped.
      *
      * @param  array<string, mixed>  $response
      * @return array<int, array<string, mixed>>
      */
     private function extractFields(array $response, string $prefix = ''): array
     {
+        if ($prefix === '') {
+            $marked = data_get($response, 'extracted_fields', data_get($response, 'data.extracted_fields'));
+
+            if (\is_array($marked) && $marked !== []) {
+                $response = $marked;
+            }
+        }
+
         $rows = [];
 
         foreach ($response as $key => $value) {
