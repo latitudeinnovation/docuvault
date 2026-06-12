@@ -90,7 +90,7 @@ class ProcessDocumentWithRaraxuan implements ShouldQueue
 
             $document->forceFill([
                 'status' => DocumentStatus::NeedsReview,
-                'ai_confidence' => $this->extractConfidence($normalizedResponse),
+                'ai_confidence' => $this->completenessScore($normalizedResponse),
                 'ai_raw_json' => array_replace($response, [
                     'normalized_result' => $normalizedResponse,
                 ]),
@@ -135,9 +135,23 @@ class ProcessDocumentWithRaraxuan implements ShouldQueue
     {
         if ($prefix === '') {
             $marked = data_get($response, 'extracted_fields', data_get($response, 'data.extracted_fields'));
+            $tables = data_get($response, 'tables', data_get($response, 'data.tables'));
 
-            if (\is_array($marked) && $marked !== []) {
-                $response = $marked;
+            $source = \is_array($marked) ? $marked : [];
+
+            if (\is_array($tables)) {
+                foreach ($tables as $i => $table) {
+                    $name = (string) data_get($table, 'table_name', 'table_'.$i);
+                    $rows = data_get($table, 'data', $table);
+
+                    if (\is_array($rows) && $rows !== []) {
+                        $source[$name] = $rows;
+                    }
+                }
+            }
+
+            if ($source !== []) {
+                $response = $source;
             }
         }
 
@@ -201,14 +215,56 @@ class ProcessDocumentWithRaraxuan implements ShouldQueue
     }
 
     /**
-     * @param  array<string, mixed>  $response
+     * Deterministic data-coverage score: ratio of non-null scalar leaves across the
+     * extracted_fields + tables of the normalized result. Replaces the model's
+     * unreliable self-reported overall_confidence.
+     *
+     * @param  array<string, mixed>  $normalized
      */
-    private function extractConfidence(array $response): mixed
+    private function completenessScore(array $normalized): ?float
     {
-        return data_get(
-            $response,
-            'overall_confidence',
-            data_get($response, 'confidence', data_get($response, 'data.confidence')),
-        );
+        $source = [];
+
+        if (\is_array($ef = data_get($normalized, 'extracted_fields'))) {
+            $source['extracted_fields'] = $ef;
+        }
+
+        if (\is_array($tb = data_get($normalized, 'tables'))) {
+            $source['tables'] = $tb;
+        }
+
+        if ($source === []) {
+            $source = $normalized;
+        }
+
+        [$filled, $total] = $this->countLeaves($source);
+
+        return $total > 0 ? round($filled / $total, 4) : null;
+    }
+
+    /**
+     * Count scalar leaves of a nested structure. A leaf counts as filled when it is
+     * not null and not an empty/whitespace string.
+     *
+     * @return array{0: int, 1: int} [filled, total]
+     */
+    private function countLeaves(mixed $value): array
+    {
+        if (\is_array($value)) {
+            $filled = 0;
+            $total = 0;
+
+            foreach ($value as $item) {
+                [$f, $t] = $this->countLeaves($item);
+                $filled += $f;
+                $total += $t;
+            }
+
+            return [$filled, $total];
+        }
+
+        $isFilled = ! ($value === null || (\is_string($value) && trim($value) === ''));
+
+        return [$isFilled ? 1 : 0, 1];
     }
 }
