@@ -5,13 +5,13 @@ namespace App\Jobs;
 use App\Enums\DocumentStatus;
 use App\Enums\ExtractedFieldStatus;
 use App\Models\Document;
+use App\Services\Raraxuan\DocumentExtractionClient;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
-use LatitudeInnovation\Raraxuan\Facades\Raraxuan;
 use Throwable;
 
 class ProcessDocumentWithRaraxuan implements ShouldQueue
@@ -62,11 +62,15 @@ class ProcessDocumentWithRaraxuan implements ShouldQueue
             throw new \RuntimeException("Document file [{$document->file_path}] was not found on disk [{$document->file_disk}].");
         }
 
-        $response = Raraxuan::agent(
+        $contents = (string) $disk->get($document->file_path);
+        $filename = $document->original_file_name ?: basename($document->file_path);
+
+        $response = app(DocumentExtractionClient::class)->extract(
             config('docuvault.raraxuan.document_agent'),
-            [
-                'filename' => $document->original_file_name ?: basename($document->file_path),
-            ]
+            ['filename' => $filename],
+            $contents,
+            $filename,
+            $document->file_type ?: 'application/octet-stream',
         );
 
         $normalizedResponse = $this->normalizeResponse($response);
@@ -115,37 +119,74 @@ class ProcessDocumentWithRaraxuan implements ShouldQueue
     }
 
     /**
+     * Recursively flatten every leaf value in the AI result into a readable
+     * key => value field row, so the whole JSON shows in the extracted fields
+     * table regardless of how the template nests it (e.g. under
+     * `extracted_fields`). Empty containers are skipped; scalar lists are
+     * joined into a single value.
+     *
+     * @param  array<string, mixed>  $response
      * @return array<int, array<string, mixed>>
      */
-    private function extractFields(array $response): array
+    private function extractFields(array $response, string $prefix = ''): array
     {
-        $fields = data_get($response, 'fields', data_get($response, 'data.fields', []));
+        $rows = [];
 
-        if (! is_array($fields)) {
-            return [];
+        foreach ($response as $key => $value) {
+            $path = $prefix === '' ? (string) $key : $prefix.'.'.$key;
+
+            if (\is_array($value)) {
+                if ($value === []) {
+                    continue;
+                }
+
+                if (array_is_list($value) && $this->isScalarList($value)) {
+                    $rows[] = $this->fieldRow($path, implode(', ', array_map(
+                        static fn (mixed $item): string => (string) $item,
+                        $value,
+                    )));
+
+                    continue;
+                }
+
+                $rows = array_merge($rows, $this->extractFields($value, $path));
+
+                continue;
+            }
+
+            $rows[] = $this->fieldRow($path, $value);
         }
 
-        if (array_is_list($fields)) {
-            return array_values(array_filter($fields, is_array(...)));
+        return $rows;
+    }
+
+    /**
+     * @param  array<int, mixed>  $value
+     */
+    private function isScalarList(array $value): bool
+    {
+        foreach ($value as $item) {
+            if (\is_array($item)) {
+                return false;
+            }
         }
 
-        return collect($fields)
-            ->map(fn (mixed $field, string $key): array => is_array($field)
-                ? [
-                    'key' => $key,
-                    'label' => Str::headline($key),
-                    'value' => Arr::get($field, 'value'),
-                    'confidence' => Arr::get($field, 'confidence'),
-                ]
-                : [
-                    'key' => $key,
-                    'label' => Str::headline($key),
-                    'value' => $field,
-                    'confidence' => null,
-                ]
-            )
-            ->values()
-            ->all();
+        return true;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function fieldRow(string $path, mixed $value): array
+    {
+        $segments = explode('.', $path);
+
+        return [
+            'key' => $path,
+            'label' => Str::headline((string) end($segments)),
+            'value' => $value === null ? null : (string) $value,
+            'confidence' => null,
+        ];
     }
 
     /**
