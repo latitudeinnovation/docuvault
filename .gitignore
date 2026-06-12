@@ -25,3 +25,8 @@ _ide_helper.php
 Homestead.json
 Homestead.yaml
 Thumbs.db
+
+# Local example fixtures (real PDFs + extracted PII, not for the repo)
+/docs/example-pdf/
+/docs/example-json/
+/docs/example-md/
