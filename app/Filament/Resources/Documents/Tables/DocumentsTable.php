@@ -7,6 +7,7 @@ use App\Enums\ExtractedFieldStatus;
 use App\Jobs\ProcessDocumentWithRaraxuan;
 use App\Models\Document;
 use Filament\Actions\Action;
+use Filament\Actions\ActionGroup;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteAction;
 use Filament\Actions\DeleteBulkAction;
@@ -65,42 +66,44 @@ class DocumentsTable
             ])
             ->recordActions([
                 ViewAction::make(),
-                Action::make('download')
-                    ->icon(Heroicon::ArrowDownTray)
-                    ->action(fn (Document $record) => Storage::disk($record->file_disk)->download(
-                        $record->file_path,
-                        $record->original_file_name ?: basename($record->file_path),
-                    )),
-                Action::make('reprocess')
-                    ->icon(Heroicon::ArrowPath)
-                    ->color('info')
-                    ->requiresConfirmation()
-                    ->action(function (Document $record): void {
-                        ProcessDocumentWithRaraxuan::dispatch($record);
+                ActionGroup::make([
+                    Action::make('download')
+                        ->icon(Heroicon::ArrowDownTray)
+                        ->action(fn (Document $record) => Storage::disk($record->file_disk)->download(
+                            $record->file_path,
+                            $record->original_file_name ?: basename($record->file_path),
+                        )),
+                    Action::make('reprocess')
+                        ->icon(Heroicon::ArrowPath)
+                        ->color('info')
+                        ->requiresConfirmation()
+                        ->action(function (Document $record): void {
+                            ProcessDocumentWithRaraxuan::dispatch($record);
 
-                        Notification::make()
-                            ->success()
-                            ->title('Document queued for processing')
-                            ->send();
-                    }),
-                Action::make('approve')
-                    ->icon(Heroicon::CheckCircle)
-                    ->color('success')
-                    ->requiresConfirmation()
-                    ->visible(fn (Document $record): bool => $record->extractedFields()->exists()
-                        && ! $record->extractedFields()
-                            ->where('status', ExtractedFieldStatus::Pending->value)
-                            ->exists())
-                    ->action(function (Document $record): void {
-                        $record->update(['status' => DocumentStatus::Approved]);
+                            Notification::make()
+                                ->success()
+                                ->title('Document queued for processing')
+                                ->send();
+                        }),
+                    Action::make('approve')
+                        ->icon(Heroicon::CheckCircle)
+                        ->color('success')
+                        ->requiresConfirmation()
+                        ->visible(fn (Document $record): bool => $record->extractedFields()->exists()
+                            && ! $record->extractedFields()
+                                ->where('status', ExtractedFieldStatus::Pending->value)
+                                ->exists())
+                        ->action(function (Document $record): void {
+                            $record->update(['status' => DocumentStatus::Approved]);
 
-                        Notification::make()
-                            ->success()
-                            ->title('Document approved')
-                            ->send();
-                    }),
-                EditAction::make(),
-                DeleteAction::make(),
+                            Notification::make()
+                                ->success()
+                                ->title('Document approved')
+                                ->send();
+                        }),
+                    EditAction::make(),
+                    DeleteAction::make(),
+                ]),
             ])
             ->toolbarActions([
                 BulkActionGroup::make([

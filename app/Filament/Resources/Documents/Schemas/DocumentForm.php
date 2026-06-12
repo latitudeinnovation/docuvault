@@ -72,7 +72,8 @@ class DocumentForm
                         Hidden::make('file_type')
                             ->default('application/octet-stream')
                             ->required(),
-                    ]),
+                    ])
+                    ->columnSpanFull(),
             ]);
     }
 }
