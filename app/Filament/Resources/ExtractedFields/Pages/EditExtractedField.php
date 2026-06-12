@@ -14,7 +14,9 @@ class EditExtractedField extends EditRecord
     protected function getHeaderActions(): array
     {
         return [
-            ViewAction::make(),
+            ViewAction::make()
+                ->button()
+                ->color('primary'),
             DeleteAction::make(),
         ];
     }

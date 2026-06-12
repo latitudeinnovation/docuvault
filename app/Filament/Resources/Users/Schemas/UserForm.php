@@ -34,7 +34,8 @@ class UserForm
                             DateTimePicker::make('email_verified_at')
                                 ->label('Email verified at'),
                         ]),
-                    ]),
+                    ])
+                    ->columnSpanFull(),
             ]);
     }
 }
