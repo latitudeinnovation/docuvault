@@ -130,13 +130,20 @@ class ProcessDocumentWithRaraxuan implements ShouldQueue
         }
 
         return collect($fields)
-            ->filter(fn (mixed $field): bool => is_array($field))
-            ->map(fn (array $field, string $key): array => [
-                'key' => $key,
-                'label' => Str::headline($key),
-                'value' => Arr::get($field, 'value'),
-                'confidence' => Arr::get($field, 'confidence'),
-            ])
+            ->map(fn (mixed $field, string $key): array => is_array($field)
+                ? [
+                    'key' => $key,
+                    'label' => Str::headline($key),
+                    'value' => Arr::get($field, 'value'),
+                    'confidence' => Arr::get($field, 'confidence'),
+                ]
+                : [
+                    'key' => $key,
+                    'label' => Str::headline($key),
+                    'value' => $field,
+                    'confidence' => null,
+                ]
+            )
             ->values()
             ->all();
     }
