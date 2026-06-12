@@ -14,7 +14,8 @@ class EditDocument extends EditRecord
     protected function getHeaderActions(): array
     {
         return [
-            ViewAction::make(),
+            ViewAction::make()
+            ->color('primary'),
             DeleteAction::make(),
         ];
     }

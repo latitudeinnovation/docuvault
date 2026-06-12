@@ -59,6 +59,20 @@ services:
     container_name: docuvault-redis
     networks: [appnet]
 
+  worker:
+    image: docuvault-app:local
+    container_name: docuvault-worker
+    restart: unless-stopped
+    env_file: [./.env]
+    command: ["php", "artisan", "queue:work", "--sleep=3", "--tries=3", "--max-time=3600"]
+    volumes:
+      - .:/var/www
+      - ./docker/development/php-fpm/uploads.ini:/usr/local/etc/php/conf.d/99-uploads.ini:ro
+    environment:
+      TZ: Asia/Kuala_Lumpur
+    depends_on: [db, redis]
+    networks: [appnet]
+
   phpmyadmin:
     image: arm64v8/phpmyadmin
     platform: linux/arm64/v8

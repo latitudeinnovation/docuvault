@@ -5,6 +5,7 @@ namespace App\Filament\Resources\ExtractedFields\Tables;
 use App\Enums\ExtractedFieldStatus;
 use App\Models\ExtractedField;
 use Filament\Actions\Action;
+use Filament\Actions\ActionGroup;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteAction;
 use Filament\Actions\DeleteBulkAction;
@@ -57,17 +58,19 @@ class ExtractedFieldsTable
             ])
             ->recordActions([
                 ViewAction::make(),
-                Action::make('approve')
-                    ->icon(Heroicon::CheckCircle)
-                    ->color('success')
-                    ->action(fn (ExtractedField $record) => $record->update(['status' => ExtractedFieldStatus::Approved])),
-                Action::make('reject')
-                    ->icon(Heroicon::XCircle)
-                    ->color('danger')
-                    ->requiresConfirmation()
-                    ->action(fn (ExtractedField $record) => $record->update(['status' => ExtractedFieldStatus::Rejected])),
-                EditAction::make(),
-                DeleteAction::make(),
+                ActionGroup::make([
+                    Action::make('approve')
+                        ->icon(Heroicon::CheckCircle)
+                        ->color('success')
+                        ->action(fn (ExtractedField $record) => $record->update(['status' => ExtractedFieldStatus::Approved])),
+                    Action::make('reject')
+                        ->icon(Heroicon::XCircle)
+                        ->color('danger')
+                        ->requiresConfirmation()
+                        ->action(fn (ExtractedField $record) => $record->update(['status' => ExtractedFieldStatus::Rejected])),
+                    EditAction::make(),
+                    DeleteAction::make(),
+                ]),
             ])
             ->toolbarActions([
                 BulkActionGroup::make([

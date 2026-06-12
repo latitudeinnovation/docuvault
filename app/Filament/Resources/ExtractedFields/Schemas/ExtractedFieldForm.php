@@ -45,7 +45,8 @@ class ExtractedFieldForm
                         Textarea::make('corrected_value')
                             ->rows(4)
                             ->columnSpanFull(),
-                    ]),
+                    ])
+                    ->columnSpanFull(),
             ]);
     }
 }
