@@ -68,9 +68,7 @@ class ProcessDocumentWithRaraxuanTest extends TestCase
         $document->refresh();
 
         $this->assertSame(DocumentStatus::NeedsReview, $document->status);
-        // ai_confidence is now a computed completeness score (non-null leaf ratio),
-        // not the model's self-reported overall_confidence. Both fields non-null => 1.0000.
-        $this->assertSame('1.0000', $document->ai_confidence);
+        $this->assertSame('0.9500', $document->ai_confidence);
         $this->assertNotNull($document->processed_at);
 
         // Only the marked extracted_fields are surfaced, with clean keys.
@@ -160,7 +158,7 @@ class ProcessDocumentWithRaraxuanTest extends TestCase
         $this->assertSame(2, $document->extractedFields()->count());
     }
 
-    public function test_flattens_tables_into_field_rows_and_scores_completeness(): void
+    public function test_flattens_tables_into_field_rows_and_stores_ai_confidence(): void
     {
         config()->set('raraxuan.base_url', 'https://ai.raraxuan.test/api');
         config()->set('raraxuan.api_key', 'rx_test_key');
@@ -213,22 +211,30 @@ class ProcessDocumentWithRaraxuanTest extends TestCase
             'value' => '8881051766214',
         ]);
 
-        // Table rows now flatten into field rows keyed by table_name + index + column.
-        $this->assertDatabaseHas(ExtractedField::class, [
+        // Table rows flatten keyed by table_name + category_value + column (dots stripped from column names).
+        // CATEGORY column itself is not stored — it becomes part of the path instead.
+        $this->assertDatabaseMissing(ExtractedField::class, [
             'document_id' => $document->id,
-            'field_key' => 'ACCOUNT SUMMARY.0.CATEGORY',
-            'value' => 'OPENING BALANCE',
+            'field_key' => 'ACCOUNT SUMMARY.OPENING BALANCE.CATEGORY',
         ]);
         $this->assertDatabaseHas(ExtractedField::class, [
             'document_id' => $document->id,
-            'field_key' => 'ACCOUNT SUMMARY.1.BALANCE',
+            'field_key' => 'ACCOUNT SUMMARY.OPENING BALANCE.BALANCE',
+            'field_label' => 'Balance',
+            'value' => '11307.19',
+        ]);
+        $this->assertDatabaseHas(ExtractedField::class, [
+            'document_id' => $document->id,
+            'field_key' => 'ACCOUNT SUMMARY.TOTAL DEBITS.BALANCE',
             'value' => '1464008.00',
         ]);
+        $this->assertDatabaseHas(ExtractedField::class, [
+            'document_id' => $document->id,
+            'field_key' => 'ACCOUNT SUMMARY.OPENING BALANCE.NO OF TRANSACTION',
+            'field_label' => 'No. Of Transaction',
+        ]);
 
-        // Completeness reflects real coverage: one null table cell drops it below 1.0,
-        // ignoring the model's self-reported overall_confidence of 1.0.
-        // Leaves: account_number(1) + table_name(1) + 6 cells = 8, one null => 7/8 = 0.8750.
-        $this->assertSame('0.8750', $document->ai_confidence);
+        $this->assertSame('1.0000', $document->ai_confidence);
     }
 
     public function test_processing_failure_marks_document_failed(): void

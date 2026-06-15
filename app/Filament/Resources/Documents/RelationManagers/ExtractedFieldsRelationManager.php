@@ -16,13 +16,19 @@ class ExtractedFieldsRelationManager extends RelationManager
 {
     protected static string $relationship = 'extractedFields';
 
+    public function isReadOnly(): bool
+    {
+        return false;
+    }
+
     public function form(Schema $schema): Schema
     {
         return $schema
             ->components([
                 TextInput::make('field_key')
                     ->required()
-                    ->maxLength(255),
+                    ->maxLength(255)
+                    ->visibleOn('create'),
                 TextInput::make('field_label')
                     ->required()
                     ->maxLength(255),

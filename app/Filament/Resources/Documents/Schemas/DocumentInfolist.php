@@ -29,12 +29,18 @@ class DocumentInfolist
                             ->label('Document type'),
                         TextEntry::make('status')
                             ->badge(),
+                        TextEntry::make('failure_reason')
+                            ->label('Failure reason')
+                            ->visible(fn(Document $record): bool => $record->status === \App\Enums\DocumentStatus::Failed)
+                            ->color('danger')
+                            ->icon(Heroicon::ExclamationTriangle)
+                            ->columnSpanFull(),
                         TextEntry::make('original_file_name')
                             ->label('Original file'),
                         TextEntry::make('file_type')
                             ->label('MIME type'),
                         TextEntry::make('ai_confidence')
-                            ->label('Completeness')
+                            ->label('Confidence')
                             ->numeric(decimalPlaces: 2),
                         TextEntry::make('processed_at')
                             ->dateTime(),

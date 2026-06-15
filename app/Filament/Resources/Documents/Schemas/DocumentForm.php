@@ -40,11 +40,15 @@ class DocumentForm
                                 ->maxLength(255)
                                 ->columnSpan(1),
 
+                            Hidden::make('status')
+                                ->default(DocumentStatus::Uploaded)
+                                ->hiddenOn('edit'),
+
                             Select::make('status')
                                 ->options(DocumentStatus::class)
-                                ->default(DocumentStatus::Uploaded)
                                 ->required()
-                                ->columnSpan(1),
+                                ->columnSpan(1)
+                                ->visibleOn('edit'),
                         ]),
 
                         FileUpload::make('file_path')
