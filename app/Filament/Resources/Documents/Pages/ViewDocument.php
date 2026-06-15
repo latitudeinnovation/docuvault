@@ -27,8 +27,8 @@ class ViewDocument extends ViewRecord
                 ->color('success')
                 ->button()
                 ->requiresConfirmation()
-                ->visible(fn (Document $record): bool => $record->extractedFields()->exists()
-                    && ! $record->extractedFields()->where('status', ExtractedFieldStatus::Pending->value)->exists()
+                ->visible(fn(Document $record): bool => $record->extractedFields()->exists()
+                    && !$record->extractedFields()->where('status', ExtractedFieldStatus::Pending->value)->exists()
                     && $record->status !== DocumentStatus::Approved)
                 ->action(function (Document $record): void {
                     $record->update(['status' => DocumentStatus::Approved]);
@@ -39,11 +39,17 @@ class ViewDocument extends ViewRecord
                         ->send();
                 }),
             Action::make('reprocess')
+                ->label('Process')
                 ->icon(Heroicon::ArrowPath)
                 ->color('info')
                 ->button()
                 ->requiresConfirmation()
                 ->action(function (Document $record): void {
+                    $record->forceFill([
+                        'status' => DocumentStatus::Processing,
+                        'failure_reason' => null,
+                    ])->save();
+
                     ProcessDocumentWithRaraxuan::dispatch($record);
 
                     Notification::make()
@@ -55,7 +61,7 @@ class ViewDocument extends ViewRecord
                 ->icon(Heroicon::ArrowDownTray)
                 ->color('gray')
                 ->button()
-                ->action(fn (Document $record) => Storage::disk($record->file_disk)->download(
+                ->action(fn(Document $record) => Storage::disk($record->file_disk)->download(
                     $record->file_path,
                     $record->original_file_name ?: basename($record->file_path),
                 )),

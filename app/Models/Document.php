@@ -22,6 +22,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
     'ai_confidence',
     'ai_raw_json',
     'processed_at',
+    'failure_reason',
 ])]
 class Document extends Model
 {

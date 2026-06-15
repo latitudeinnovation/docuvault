@@ -16,6 +16,11 @@ class NotesRelationManager extends RelationManager
 {
     protected static string $relationship = 'notes';
 
+    public function isReadOnly(): bool
+    {
+        return false;
+    }
+
     public function form(Schema $schema): Schema
     {
         return $schema
