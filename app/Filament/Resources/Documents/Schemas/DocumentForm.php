@@ -25,7 +25,7 @@ class DocumentForm
                                 ->relationship('owner', 'name')
                                 ->searchable()
                                 ->preload()
-                                ->default(fn (): ?int => auth()->id())
+                                ->default(fn(): ?int => auth()->id())
                                 ->required()
                                 ->columnSpan(1),
 
@@ -37,7 +37,7 @@ class DocumentForm
                             Select::make('document_type')
                                 ->options([
                                     'ssm' => 'SSM',
-                                    'bank_statement' => 'Bank Statement',
+                                    'bank_account' => 'Bank Account',
                                 ])
                                 ->default(config('docuvault.documents.default_type'))
                                 ->required()

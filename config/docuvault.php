@@ -76,6 +76,16 @@ return [
         ],
     ],
 
+    'shareholders' => [
+        'table_keys' => ['shareholder', 'member'],
+
+        'columns' => [
+            'name' => ['name', 'company'],
+            'ic' => ['ic', 'passport', 'registration', 'nric'],
+            'shares' => ['share', 'shares', 'total'],
+        ],
+    ],
+
     'raraxuan' => [
         'document_agent' => env('RARAXUAN_DOCUMENT_AGENT', 'doc-universal-extractor'),
     ],

@@ -166,6 +166,11 @@ class DirectorExtractor
     /**
      * Split a "name then address lines" cell into [name, address].
      *
+     * Handles two formats:
+     * 1. Multi-line: name on first line, address on remaining lines.
+     * 2. Single-line: name followed by address starting with a Malaysian address
+     *    prefix (NO./LOT/UNIT/BLOCK or a numeric unit like "164-2-6").
+     *
      * @return array{0: string, 1: ?string}
      */
     private function splitNameAddress(string $cell): array
@@ -176,10 +181,27 @@ class DirectorExtractor
             return ['', null];
         }
 
-        $name = array_shift($lines);
-        $address = $lines === [] ? null : implode(', ', $lines);
+        if (count($lines) > 1) {
+            $name = array_shift($lines);
 
-        return [$name, $address];
+            return [$name, implode(', ', $lines)];
+        }
+
+        // Single line — detect where the address portion starts.
+        // Addresses typically begin with: NO.123 / NO 123 / 164-2-6 / LOT / UNIT / BLOCK
+        $addressStart = '/\s+(?=(?:NO\.?\s*\d|\d+[-\/]\d|\bLOT\s|\bUNIT\s|\bBLOCK\s|\bPT\s+\d))/i';
+
+        if (preg_match($addressStart, $lines[0], $matches, PREG_OFFSET_CAPTURE)) {
+            $splitAt = (int) $matches[0][1];
+            $name = trim(substr($lines[0], 0, $splitAt));
+            $address = trim(substr($lines[0], $splitAt));
+
+            if ($name !== '') {
+                return [$name, $address !== '' ? $address : null];
+            }
+        }
+
+        return [$lines[0], null];
     }
 
     private function parseDate(string $value): ?string

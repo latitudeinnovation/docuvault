@@ -6,6 +6,7 @@ use App\Enums\DocumentStatus;
 use App\Enums\ExtractedFieldStatus;
 use App\Models\Document;
 use App\Services\Documents\DirectorExtractor;
+use App\Services\Documents\ShareholderExtractor;
 use App\Services\Documents\DocumentClassifier;
 use App\Services\Raraxuan\DocumentExtractionClient;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -94,10 +95,17 @@ class ProcessDocumentWithRaraxuan implements ShouldQueue
                 ]);
             }
 
+            $aiRawJson = array_replace($response, ['normalized_result' => $normalizedResponse]);
+
+            // Set on the model object so DirectorExtractor can read ai_raw_json
+            // before the forceFill/save below persists it to the database.
+            $document->ai_raw_json = $aiRawJson;
+
             $company = $classifier->resolveCompany($document);
 
             if ($company !== null) {
                 app(DirectorExtractor::class)->syncFromDocument($document, $company);
+                app(ShareholderExtractor::class)->syncFromDocument($document, $company);
             }
 
             $document->forceFill([
@@ -105,9 +113,7 @@ class ProcessDocumentWithRaraxuan implements ShouldQueue
                 'document_type' => $classifier->resolveType($normalizedResponse),
                 'status' => DocumentStatus::NeedsReview,
                 'ai_confidence' => $this->overallConfidence($normalizedResponse),
-                'ai_raw_json' => array_replace($response, [
-                    'normalized_result' => $normalizedResponse,
-                ]),
+                'ai_raw_json' => $aiRawJson,
                 'processed_at' => now(),
             ])->save();
         });
@@ -196,7 +202,7 @@ class ProcessDocumentWithRaraxuan implements ShouldQueue
 
                 // Per-field confidence shape: {"value": ..., "confidence": 0.9}
                 if (array_key_exists('value', $value) && array_key_exists('confidence', $value) && count($value) === 2) {
-                    $rows[] = $this->fieldRow($path, $value['value'], is_numeric($value['confidence']) ? (float) $value['confidence'] : null, (string) $key);
+                    $rows[] = $this->fieldRow($path, \is_array($value['value']) ? json_encode($value['value']) : $value['value'], is_numeric($value['confidence']) ? (float) $value['confidence'] : null, (string) $key);
 
                     continue;
                 }
