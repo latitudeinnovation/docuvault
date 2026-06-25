@@ -25,7 +25,7 @@ class DocumentForm
                                 ->relationship('owner', 'name')
                                 ->searchable()
                                 ->preload()
-                                ->default(fn (): ?int => auth()->id())
+                                ->default(fn(): ?int => auth()->id())
                                 ->required()
                                 ->columnSpan(1),
 
@@ -34,17 +34,24 @@ class DocumentForm
                                 ->maxLength(255)
                                 ->columnSpan(1),
 
-                            TextInput::make('document_type')
+                            Select::make('document_type')
+                                ->options([
+                                    'ssm' => 'SSM',
+                                    'bank_account' => 'Bank Account',
+                                ])
                                 ->default(config('docuvault.documents.default_type'))
                                 ->required()
-                                ->maxLength(255)
                                 ->columnSpan(1),
+
+                            Hidden::make('status')
+                                ->default(DocumentStatus::Uploaded)
+                                ->hiddenOn('edit'),
 
                             Select::make('status')
                                 ->options(DocumentStatus::class)
-                                ->default(DocumentStatus::Uploaded)
                                 ->required()
-                                ->columnSpan(1),
+                                ->columnSpan(1)
+                                ->visibleOn('edit'),
                         ]),
 
                         FileUpload::make('file_path')

@@ -21,6 +21,7 @@ class DocumentFactory extends Factory
     {
         return [
             'user_id' => User::factory(),
+            'company_id' => null,
             'title' => fake()->sentence(3),
             'document_type' => 'general',
             'file_disk' => 'local',

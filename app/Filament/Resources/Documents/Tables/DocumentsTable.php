@@ -25,6 +25,7 @@ class DocumentsTable
     public static function configure(Table $table): Table
     {
         return $table
+            ->defaultSort('created_at', 'desc')
             ->columns([
                 TextColumn::make('title')
                     ->searchable()
@@ -40,7 +41,7 @@ class DocumentsTable
                     ->badge()
                     ->sortable(),
                 TextColumn::make('ai_confidence')
-                    ->label('Completeness')
+                    ->label('Confidence')
                     ->numeric(decimalPlaces: 2)
                     ->sortable(),
                 TextColumn::make('created_at')
@@ -58,7 +59,7 @@ class DocumentsTable
                 SelectFilter::make('status')
                     ->options(DocumentStatus::class),
                 SelectFilter::make('document_type')
-                    ->options(fn (): array => Document::query()
+                    ->options(fn(): array => Document::query()
                         ->distinct()
                         ->orderBy('document_type')
                         ->pluck('document_type', 'document_type')
@@ -69,11 +70,12 @@ class DocumentsTable
                 ActionGroup::make([
                     Action::make('download')
                         ->icon(Heroicon::ArrowDownTray)
-                        ->action(fn (Document $record) => Storage::disk($record->file_disk)->download(
+                        ->action(fn(Document $record) => Storage::disk($record->file_disk)->download(
                             $record->file_path,
                             $record->original_file_name ?: basename($record->file_path),
                         )),
                     Action::make('reprocess')
+                        ->label('Process')
                         ->icon(Heroicon::ArrowPath)
                         ->color('info')
                         ->requiresConfirmation()
@@ -89,8 +91,8 @@ class DocumentsTable
                         ->icon(Heroicon::CheckCircle)
                         ->color('success')
                         ->requiresConfirmation()
-                        ->visible(fn (Document $record): bool => $record->extractedFields()->exists()
-                            && ! $record->extractedFields()
+                        ->visible(fn(Document $record): bool => $record->extractedFields()->exists()
+                            && !$record->extractedFields()
                                 ->where('status', ExtractedFieldStatus::Pending->value)
                                 ->exists())
                         ->action(function (Document $record): void {

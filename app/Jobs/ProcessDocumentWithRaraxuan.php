@@ -5,6 +5,9 @@ namespace App\Jobs;
 use App\Enums\DocumentStatus;
 use App\Enums\ExtractedFieldStatus;
 use App\Models\Document;
+use App\Services\Documents\DirectorExtractor;
+use App\Services\Documents\ShareholderExtractor;
+use App\Services\Documents\DocumentClassifier;
 use App\Services\Raraxuan\DocumentExtractionClient;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
@@ -35,6 +38,7 @@ class ProcessDocumentWithRaraxuan implements ShouldQueue
 
             $document->forceFill([
                 'status' => DocumentStatus::Failed,
+                'failure_reason' => $exception->getMessage(),
             ])->save();
         }
     }
@@ -54,6 +58,7 @@ class ProcessDocumentWithRaraxuan implements ShouldQueue
     {
         $document->forceFill([
             'status' => DocumentStatus::Processing,
+            'failure_reason' => null,
         ])->save();
 
         $disk = Storage::disk($document->file_disk);
@@ -75,7 +80,9 @@ class ProcessDocumentWithRaraxuan implements ShouldQueue
 
         $normalizedResponse = $this->normalizeResponse($response);
 
-        DB::transaction(function () use ($document, $normalizedResponse, $response): void {
+        $classifier = app(DocumentClassifier::class);
+
+        DB::transaction(function () use ($document, $normalizedResponse, $response, $classifier): void {
             $document->extractedFields()->delete();
 
             foreach ($this->extractFields($normalizedResponse) as $field) {
@@ -88,12 +95,25 @@ class ProcessDocumentWithRaraxuan implements ShouldQueue
                 ]);
             }
 
+            $aiRawJson = array_replace($response, ['normalized_result' => $normalizedResponse]);
+
+            // Set on the model object so DirectorExtractor can read ai_raw_json
+            // before the forceFill/save below persists it to the database.
+            $document->ai_raw_json = $aiRawJson;
+
+            $company = $classifier->resolveCompany($document);
+
+            if ($company !== null) {
+                app(DirectorExtractor::class)->syncFromDocument($document, $company);
+                app(ShareholderExtractor::class)->syncFromDocument($document, $company);
+            }
+
             $document->forceFill([
+                'company_id' => $company?->getKey(),
+                'document_type' => $classifier->resolveType($normalizedResponse),
                 'status' => DocumentStatus::NeedsReview,
-                'ai_confidence' => $this->completenessScore($normalizedResponse),
-                'ai_raw_json' => array_replace($response, [
-                    'normalized_result' => $normalizedResponse,
-                ]),
+                'ai_confidence' => $this->overallConfidence($normalizedResponse),
+                'ai_raw_json' => $aiRawJson,
                 'processed_at' => now(),
             ])->save();
         });
@@ -145,7 +165,21 @@ class ProcessDocumentWithRaraxuan implements ShouldQueue
                     $rows = data_get($table, 'data', $table);
 
                     if (\is_array($rows) && $rows !== []) {
-                        $source[$name] = $rows;
+                        $indexed = [];
+                        foreach ($rows as $row) {
+                            if (! \is_array($row)) {
+                                $indexed[] = $row;
+
+                                continue;
+                            }
+                            [$categoryVal, $categoryCol] = $this->findRowCategory($row);
+                            if ($categoryVal !== null && $categoryCol !== null) {
+                                $indexed[$categoryVal] = array_diff_key($row, [$categoryCol => null]);
+                            } else {
+                                $indexed[] = $row;
+                            }
+                        }
+                        $source[$name] = $indexed;
                     }
                 }
             }
@@ -158,10 +192,29 @@ class ProcessDocumentWithRaraxuan implements ShouldQueue
         $rows = [];
 
         foreach ($response as $key => $value) {
-            $path = $prefix === '' ? (string) $key : $prefix.'.'.$key;
+            $safeKey = str_replace('.', '', (string) $key);
+            $path = $prefix === '' ? $safeKey : $prefix.'.'.$safeKey;
 
             if (\is_array($value)) {
                 if ($value === []) {
+                    continue;
+                }
+
+                // Per-field confidence shape: {"value": ..., "confidence": 0.9}
+                if (array_key_exists('value', $value) && array_key_exists('confidence', $value) && count($value) === 2) {
+                    $rows[] = $this->fieldRow($path, \is_array($value['value']) ? json_encode($value['value']) : $value['value'], is_numeric($value['confidence']) ? (float) $value['confidence'] : null, (string) $key);
+
+                    continue;
+                }
+
+                // Per-row confidence shape: {"COL1": "val", ..., "confidence": 0.9}
+                if (! array_is_list($value) && array_key_exists('confidence', $value) && count($value) > 2) {
+                    $rowConfidence = is_numeric($value['confidence']) ? (float) $value['confidence'] : null;
+                    foreach (array_diff_key($value, ['confidence' => null]) as $col => $colVal) {
+                        $safeCol = str_replace('.', '', (string) $col);
+                        $rows[] = $this->fieldRow($path.'.'.$safeCol, \is_array($colVal) ? json_encode($colVal) : $colVal, $rowConfidence, (string) $col);
+                    }
+
                     continue;
                 }
 
@@ -169,7 +222,7 @@ class ProcessDocumentWithRaraxuan implements ShouldQueue
                     $rows[] = $this->fieldRow($path, implode(', ', array_map(
                         static fn (mixed $item): string => (string) $item,
                         $value,
-                    )));
+                    )), null, (string) $key);
 
                     continue;
                 }
@@ -179,10 +232,38 @@ class ProcessDocumentWithRaraxuan implements ShouldQueue
                 continue;
             }
 
-            $rows[] = $this->fieldRow($path, $value);
+            $rows[] = $this->fieldRow($path, $value, null, (string) $key);
         }
 
         return $rows;
+    }
+
+    /**
+     * Find the row identifier using the first column whose value is not a pure
+     * numeric/ID string (digits, dashes, slashes). Returns [englishValue, columnKey].
+     *
+     * @param  array<string, mixed>  $row
+     * @return array{0: string|null, 1: string|null}
+     */
+    private function findRowCategory(array $row): array
+    {
+        foreach ($row as $col => $val) {
+            if ((string) $col === 'confidence') {
+                continue;
+            }
+            $english = trim(explode('/', (string) $val)[0]);
+            if ($english === '') {
+                continue;
+            }
+            // Skip pure ID/numeric values (IC numbers, dates like "720101-10-6249")
+            if (preg_match('/^[\d\-\/\s]+$/', $english)) {
+                continue;
+            }
+
+            return [$english, (string) $col];
+        }
+
+        return [null, null];
     }
 
     /**
@@ -202,69 +283,29 @@ class ProcessDocumentWithRaraxuan implements ShouldQueue
     /**
      * @return array<string, mixed>
      */
-    private function fieldRow(string $path, mixed $value): array
+    private function fieldRow(string $path, mixed $value, ?float $confidence = null, ?string $columnName = null): array
     {
-        $segments = explode('.', $path);
+        $labelSource = $columnName ?? end(explode('.', $path));
+        // Strip secondary language (e.g. "BALANCE / BAKI" → "Balance")
+        $english = trim(explode('/', $labelSource)[0]);
+        $source = $english !== '' ? $english : $labelSource;
+        $label = Str::headline(mb_strtolower($source));
 
         return [
             'key' => $path,
-            'label' => Str::headline((string) end($segments)),
+            'label' => $label,
             'value' => $value === null ? null : (string) $value,
-            'confidence' => null,
+            'confidence' => $confidence,
         ];
     }
 
     /**
-     * Deterministic data-coverage score: ratio of non-null scalar leaves across the
-     * extracted_fields + tables of the normalized result. Replaces the model's
-     * unreliable self-reported overall_confidence.
-     *
      * @param  array<string, mixed>  $normalized
      */
-    private function completenessScore(array $normalized): ?float
+    private function overallConfidence(array $normalized): ?float
     {
-        $source = [];
+        $value = data_get($normalized, 'overall_confidence');
 
-        if (\is_array($ef = data_get($normalized, 'extracted_fields'))) {
-            $source['extracted_fields'] = $ef;
-        }
-
-        if (\is_array($tb = data_get($normalized, 'tables'))) {
-            $source['tables'] = $tb;
-        }
-
-        if ($source === []) {
-            $source = $normalized;
-        }
-
-        [$filled, $total] = $this->countLeaves($source);
-
-        return $total > 0 ? round($filled / $total, 4) : null;
-    }
-
-    /**
-     * Count scalar leaves of a nested structure. A leaf counts as filled when it is
-     * not null and not an empty/whitespace string.
-     *
-     * @return array{0: int, 1: int} [filled, total]
-     */
-    private function countLeaves(mixed $value): array
-    {
-        if (\is_array($value)) {
-            $filled = 0;
-            $total = 0;
-
-            foreach ($value as $item) {
-                [$f, $t] = $this->countLeaves($item);
-                $filled += $f;
-                $total += $t;
-            }
-
-            return [$filled, $total];
-        }
-
-        $isFilled = ! ($value === null || (\is_string($value) && trim($value) === ''));
-
-        return [$isFilled ? 1 : 0, 1];
+        return is_numeric($value) ? round((float) $value, 4) : null;
     }
 }

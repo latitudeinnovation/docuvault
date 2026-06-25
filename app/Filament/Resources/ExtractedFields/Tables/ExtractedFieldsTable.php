@@ -4,13 +4,15 @@ namespace App\Filament\Resources\ExtractedFields\Tables;
 
 use App\Enums\ExtractedFieldStatus;
 use App\Models\ExtractedField;
+use App\Filament\Resources\Documents\RelationManagers\ExtractedFieldsRelationManager;
+use Illuminate\Support\Str;
 use Filament\Actions\Action;
 use Filament\Actions\ActionGroup;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteAction;
 use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
-use Filament\Actions\ViewAction;
+// use Filament\Actions\ViewAction;
 use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\Filter;
@@ -23,14 +25,36 @@ class ExtractedFieldsTable
     public static function configure(Table $table): Table
     {
         return $table
+            ->recordAction('edit')
+            ->defaultSort('id', 'asc')
             ->columns([
                 TextColumn::make('document.title')
                     ->searchable()
-                    ->sortable(),
+                    ->sortable()
+                    ->hiddenOn(ExtractedFieldsRelationManager::class),
                 TextColumn::make('field_key')
+                    ->label('Field')
+                    ->formatStateUsing(function (string $state): string {
+                        $parts = [];
+                        foreach (explode('.', $state) as $seg) {
+                            $seg = trim($seg);
+                            if ($seg === '' || is_numeric($seg)) {
+                                continue;
+                            }
+                            $english = trim(Str::before($seg, ' /'));
+                            $parts[] = Str::title(mb_strtolower($english !== '' ? $english : $seg));
+                        }
+                        return $parts !== [] ? implode(' › ', $parts) : $state;
+                    })
                     ->searchable()
-                    ->sortable(),
+                    ->sortable()
+                    ->wrap(),
                 TextColumn::make('field_label')
+                    ->label('Label')
+                    ->formatStateUsing(function (string $state): string {
+                        $english = trim(Str::before($state, ' /'));
+                        return $english !== '' ? Str::title(mb_strtolower($english)) : $state;
+                    })
                     ->searchable()
                     ->sortable(),
                 TextColumn::make('value')
@@ -57,7 +81,7 @@ class ExtractedFieldsTable
                     ->query(fn (Builder $query): Builder => $query->where('confidence', '<', 0.8)),
             ])
             ->recordActions([
-                ViewAction::make(),
+                // ViewAction::make(),
                 ActionGroup::make([
                     Action::make('approve')
                         ->icon(Heroicon::CheckCircle)

@@ -5,12 +5,15 @@ namespace App\Filament\Resources\Documents\Pages;
 use App\Filament\Resources\Documents\DocumentResource;
 use App\Jobs\ProcessDocumentWithRaraxuan;
 use App\Models\Document;
+use Filament\Actions\Action;
 use Filament\Resources\Pages\CreateRecord;
 use Illuminate\Support\Facades\Storage;
 
 class CreateDocument extends CreateRecord
 {
     protected static string $resource = DocumentResource::class;
+
+    protected bool $shouldProcess = false;
 
     /**
      * @param  array<string, mixed>  $data
@@ -23,6 +26,21 @@ class CreateDocument extends CreateRecord
         $data['file_type'] ??= 'application/octet-stream';
 
         return $data;
+    }
+
+    protected function getFormActions(): array
+    {
+        return [
+            $this->getCreateFormAction()->label('Save'),
+            Action::make('saveAndProcess')
+                ->label('Save & Process')
+                ->color('primary')
+                ->action(function () {
+                    $this->shouldProcess = true;
+                    $this->create();
+                }),
+            $this->getCancelFormAction(),
+        ];
     }
 
     protected function afterCreate(): void
@@ -39,6 +57,8 @@ class CreateDocument extends CreateRecord
             'file_type' => $mimeType ?: $record->file_type,
         ])->save();
 
-        ProcessDocumentWithRaraxuan::dispatch($record);
+        if ($this->shouldProcess) {
+            ProcessDocumentWithRaraxuan::dispatch($record);
+        }
     }
 }

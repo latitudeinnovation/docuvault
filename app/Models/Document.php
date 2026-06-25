@@ -9,9 +9,11 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Carbon;
 
 #[Fillable([
     'user_id',
+    'company_id',
     'title',
     'document_type',
     'file_disk',
@@ -22,6 +24,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
     'ai_confidence',
     'ai_raw_json',
     'processed_at',
+    'failure_reason',
 ])]
 class Document extends Model
 {
@@ -31,6 +34,11 @@ class Document extends Model
     public function owner(): BelongsTo
     {
         return $this->belongsTo(User::class, 'user_id');
+    }
+
+    public function company(): BelongsTo
+    {
+        return $this->belongsTo(Company::class);
     }
 
     public function pages(): HasMany
@@ -46,6 +54,55 @@ class Document extends Model
     public function notes(): HasMany
     {
         return $this->hasMany(DocumentNote::class);
+    }
+
+    /**
+     * The date this document "covers" — for a bank statement, the start of its
+     * statement period; otherwise its document date, falling back to when it
+     * was processed. Used to group statements by month.
+     */
+    public function periodDate(): ?Carbon
+    {
+        $candidateKeys = [
+            'statement_period_start',
+            'period_start',
+            'statement_date',
+            'document_date',
+            'statement_period',
+            'statement_period_end',
+        ];
+
+        foreach ($candidateKeys as $key) {
+            $field = $this->extractedFields
+                ->first(fn (ExtractedField $f): bool => str_contains(strtolower((string) $f->field_key), $key));
+
+            $value = trim((string) ($field?->corrected_value ?? $field?->value ?? ''));
+
+            if ($value === '') {
+                continue;
+            }
+
+            // "01 February 2024 To 29 February 2024" — take start date only.
+            if (preg_match('/^(.+?)\s+to\s+/i', $value, $m)) {
+                $value = trim($m[1]);
+            }
+
+            try {
+                return Carbon::parse($value);
+            } catch (\Throwable) {
+                // Unparseable date string — try the next candidate.
+            }
+        }
+
+        return $this->processed_at;
+    }
+
+    /**
+     * Human label for the document's period, e.g. "February 2024".
+     */
+    public function periodLabel(): string
+    {
+        return $this->periodDate()?->translatedFormat('F Y') ?? 'Undated';
     }
 
     /**
