@@ -68,6 +68,7 @@ class Document extends Model
             'period_start',
             'statement_date',
             'document_date',
+            'statement_period',
             'statement_period_end',
         ];
 
@@ -77,12 +78,19 @@ class Document extends Model
 
             $value = trim((string) ($field?->corrected_value ?? $field?->value ?? ''));
 
-            if ($value !== '') {
-                try {
-                    return Carbon::parse($value);
-                } catch (\Throwable) {
-                    // Unparseable date string — try the next candidate.
-                }
+            if ($value === '') {
+                continue;
+            }
+
+            // "01 February 2024 To 29 February 2024" — take start date only.
+            if (preg_match('/^(.+?)\s+to\s+/i', $value, $m)) {
+                $value = trim($m[1]);
+            }
+
+            try {
+                return Carbon::parse($value);
+            } catch (\Throwable) {
+                // Unparseable date string — try the next candidate.
             }
         }
 

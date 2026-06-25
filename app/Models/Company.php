@@ -40,6 +40,13 @@ class Company extends Model
             ->withTimestamps();
     }
 
+    public function shareholders(): BelongsToMany
+    {
+        return $this->belongsToMany(Shareholder::class)
+            ->withPivot(['shares', 'source_document_id'])
+            ->withTimestamps();
+    }
+
     /**
      * @return HasMany<Document, $this>
      */

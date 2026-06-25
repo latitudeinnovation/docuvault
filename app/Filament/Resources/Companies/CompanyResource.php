@@ -11,6 +11,8 @@ use Filament\Infolists\Components\TextEntry;
 use Filament\Infolists\Components\ViewEntry;
 use Filament\Resources\Resource;
 use Filament\Schemas\Components\Section;
+use Filament\Schemas\Components\Tabs;
+use Filament\Schemas\Components\Tabs\Tab;
 use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Table;
@@ -22,6 +24,8 @@ class CompanyResource extends Resource
     protected static string|BackedEnum|null $navigationIcon = Heroicon::BuildingOffice2;
 
     protected static ?string $recordTitleAttribute = 'name';
+
+    protected static \UnitEnum|string|null $navigationGroup = 'Entities';
 
     protected static ?int $navigationSort = 0;
 
@@ -42,12 +46,32 @@ class CompanyResource extends Resource
                         ->state(fn (Company $record): int => $record->documents()->count()),
                 ]),
 
-            Section::make('Documents')
+            Tabs::make('company_tabs')
                 ->columnSpanFull()
-                ->schema([
-                    ViewEntry::make('documents_tabs')
-                        ->hiddenLabel()
-                        ->view('filament.companies.documents-tabs'),
+                ->tabs([
+                    Tab::make('Documents')
+                        ->icon(Heroicon::Document)
+                        ->schema([
+                            ViewEntry::make('documents_tabs')
+                                ->hiddenLabel()
+                                ->view('filament.companies.documents-tabs'),
+                        ]),
+
+                    Tab::make('Directors')
+                        ->icon(Heroicon::Users)
+                        ->schema([
+                            ViewEntry::make('directors_tab')
+                                ->hiddenLabel()
+                                ->view('filament.companies.directors-tab'),
+                        ]),
+
+                    Tab::make('Shareholders')
+                        ->icon(Heroicon::BuildingLibrary)
+                        ->schema([
+                            ViewEntry::make('shareholders_tab')
+                                ->hiddenLabel()
+                                ->view('filament.companies.shareholders-tab'),
+                        ]),
                 ]),
         ]);
     }
