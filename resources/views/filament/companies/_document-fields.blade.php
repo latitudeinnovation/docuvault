@@ -18,7 +18,7 @@
     </x-slot>
 
     <x-slot name="afterHeader">
-        <div x-data="{ copied: false }" style="display:flex;align-items:center;gap:0.5rem">
+        <div x-data="{ copied: false, json: @js($json) }" style="display:flex;align-items:center;gap:0.5rem">
             @if ($confidence !== null)
                 <x-filament::badge :color="$confidence >= 90 ? 'success' : ($confidence >= 70 ? 'warning' : 'danger')">
                     {{ $confidence }}% confidence
@@ -29,7 +29,7 @@
                 size="xs"
                 color="gray"
                 icon="heroicon-m-clipboard-document"
-                x-on:click="navigator.clipboard.writeText(@js($json)); copied = true; setTimeout(() => copied = false, 1500)"
+                x-on:click="navigator.clipboard.writeText(json).then(() => { copied = true; setTimeout(() => copied = false, 1500) })"
             >
                 <span x-show="! copied">Copy JSON</span>
                 <span x-show="copied" x-cloak>Copied!</span>
