@@ -5,6 +5,7 @@ namespace App\Jobs;
 use App\Enums\DocumentStatus;
 use App\Enums\ExtractedFieldStatus;
 use App\Models\Document;
+use App\Services\Documents\DirectorExtractor;
 use App\Services\Documents\DocumentClassifier;
 use App\Services\Raraxuan\DocumentExtractionClient;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -95,6 +96,10 @@ class ProcessDocumentWithRaraxuan implements ShouldQueue
 
             $company = $classifier->resolveCompany($document);
 
+            if ($company !== null) {
+                app(DirectorExtractor::class)->syncFromDocument($document, $company);
+            }
+
             $document->forceFill([
                 'company_id' => $company?->getKey(),
                 'document_type' => $classifier->resolveType($normalizedResponse),
@@ -158,6 +163,7 @@ class ProcessDocumentWithRaraxuan implements ShouldQueue
                         foreach ($rows as $row) {
                             if (! \is_array($row)) {
                                 $indexed[] = $row;
+
                                 continue;
                             }
                             [$categoryVal, $categoryCol] = $this->findRowCategory($row);
@@ -247,6 +253,7 @@ class ProcessDocumentWithRaraxuan implements ShouldQueue
             if (preg_match('/^[\d\-\/\s]+$/', $english)) {
                 continue;
             }
+
             return [$english, (string) $col];
         }
 
@@ -295,5 +302,4 @@ class ProcessDocumentWithRaraxuan implements ShouldQueue
 
         return is_numeric($value) ? round((float) $value, 4) : null;
     }
-
 }

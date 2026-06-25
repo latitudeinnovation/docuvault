@@ -50,6 +50,32 @@ return [
         ],
     ],
 
+    'directors' => [
+        /*
+         * Keywords used to find the officers table within the extracted
+         * `tables` array (matched against the table_name, case-insensitive).
+         */
+        'table_keys' => ['director', 'officer', 'board'],
+
+        /*
+         * Only officer rows whose designation contains one of these keywords are
+         * stored as directors (case-insensitive). Secretaries/others are skipped.
+         */
+        'designations' => ['director'],
+
+        /*
+         * Substring matchers (case-insensitive) used to map each table row's
+         * columns onto a person, in priority order per attribute.
+         */
+        'columns' => [
+            'name' => ['name', 'address'],
+            'ic' => ['ic', 'passport', 'nric', 'identity', 'identification'],
+            'designation' => ['designation', 'position', 'role', 'title'],
+            'appointed' => ['appointment', 'appointed', 'date'],
+            'address' => ['address'],
+        ],
+    ],
+
     'raraxuan' => [
         'document_agent' => env('RARAXUAN_DOCUMENT_AGENT', 'doc-universal-extractor'),
     ],
