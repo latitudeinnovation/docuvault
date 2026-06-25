@@ -22,6 +22,8 @@ class ExtractedFieldResource extends Resource
 
     protected static string|BackedEnum|null $navigationIcon = Heroicon::ClipboardDocumentCheck;
 
+    protected static bool $shouldRegisterNavigation = false;
+
     protected static ?string $recordTitleAttribute = 'field_label';
 
     public static function form(Schema $schema): Schema

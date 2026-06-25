@@ -42,7 +42,7 @@ class DocumentClassifier
      */
     public function resolveCompany(Document $document): ?Company
     {
-        $name = $this->companyNameFromFields($document);
+        $name = $this->firstFieldValue($document, config('docuvault.company.name_keys', []), rejectNumeric: true);
 
         if ($name === null) {
             return null;
@@ -50,32 +50,46 @@ class DocumentClassifier
 
         $slug = Company::slugFor($name);
 
-        return Company::firstOrCreate(
+        $company = Company::firstOrCreate(
             ['user_id' => $document->user_id, 'slug' => $slug],
             ['name' => $name],
         );
+
+        // Backfill the registration number from this document (e.g. an SSM
+        // profile) when the company does not have one yet. Registration numbers
+        // are IDs, so they must not be rejected as "numeric" like names are.
+        if (blank($company->registration_no)) {
+            $registration = $this->firstFieldValue($document, config('docuvault.company.registration_keys', []), rejectNumeric: false);
+
+            if ($registration !== null) {
+                $company->forceFill(['registration_no' => $registration])->save();
+            }
+        }
+
+        return $company;
     }
 
     /**
-     * Pick the best company-name value from the document's extracted fields,
-     * honouring the configured key priority.
+     * Return the first extracted-field value whose key matches one of the given
+     * keys (in priority order), normalized for display. When $rejectNumeric is
+     * true, pure number/date/ID values are skipped (used for names).
+     *
+     * @param  array<int, string>  $keys
      */
-    private function companyNameFromFields(Document $document): ?string
+    private function firstFieldValue(Document $document, array $keys, bool $rejectNumeric): ?string
     {
-        /** @var array<int, string> $nameKeys */
-        $nameKeys = config('docuvault.company.name_keys', []);
-
         $fields = $document->extractedFields()
             ->get(['field_key', 'value', 'corrected_value'])
             ->mapWithKeys(fn ($field): array => [
                 $this->normalizeKey((string) $field->field_key) => $this->normalizeValue(
                     $field->corrected_value ?? $field->value,
+                    $rejectNumeric,
                 ),
             ])
             ->filter()
             ->all();
 
-        foreach ($nameKeys as $key) {
+        foreach ($keys as $key) {
             $normalizedKey = $this->normalizeKey($key);
 
             if (isset($fields[$normalizedKey])) {
@@ -98,10 +112,12 @@ class DocumentClassifier
     }
 
     /**
-     * Clean a raw value into a usable company name, or null when unusable
-     * (empty, or a pure number/ID/date that can't be a company name).
+     * Clean a raw value into a usable string, or null when unusable. When
+     * $rejectNumeric is true, pure number/ID/date values are rejected (so a
+     * company name never resolves to e.g. an IC number); registration numbers
+     * pass $rejectNumeric = false since they are legitimately numeric.
      */
-    private function normalizeValue(mixed $value): ?string
+    private function normalizeValue(mixed $value, bool $rejectNumeric = true): ?string
     {
         $value = trim((string) ($value ?? ''));
 
@@ -112,7 +128,11 @@ class DocumentClassifier
         // Take the first line and collapse internal whitespace.
         $value = trim((string) preg_replace('/\s+/', ' ', strtok($value, "\n")));
 
-        if ($value === '' || preg_match('/^[\d\-\/.\s]+$/', $value)) {
+        if ($value === '') {
+            return null;
+        }
+
+        if ($rejectNumeric && preg_match('/^[\d\-\/.\s]+$/', $value)) {
             return null;
         }
 

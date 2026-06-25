@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Carbon;
 
 #[Fillable([
     'user_id',
@@ -53,6 +54,47 @@ class Document extends Model
     public function notes(): HasMany
     {
         return $this->hasMany(DocumentNote::class);
+    }
+
+    /**
+     * The date this document "covers" — for a bank statement, the start of its
+     * statement period; otherwise its document date, falling back to when it
+     * was processed. Used to group statements by month.
+     */
+    public function periodDate(): ?Carbon
+    {
+        $candidateKeys = [
+            'statement_period_start',
+            'period_start',
+            'statement_date',
+            'document_date',
+            'statement_period_end',
+        ];
+
+        foreach ($candidateKeys as $key) {
+            $field = $this->extractedFields
+                ->first(fn (ExtractedField $f): bool => str_contains(strtolower((string) $f->field_key), $key));
+
+            $value = trim((string) ($field?->corrected_value ?? $field?->value ?? ''));
+
+            if ($value !== '') {
+                try {
+                    return Carbon::parse($value);
+                } catch (\Throwable) {
+                    // Unparseable date string — try the next candidate.
+                }
+            }
+        }
+
+        return $this->processed_at;
+    }
+
+    /**
+     * Human label for the document's period, e.g. "February 2024".
+     */
+    public function periodLabel(): string
+    {
+        return $this->periodDate()?->translatedFormat('F Y') ?? 'Undated';
     }
 
     /**

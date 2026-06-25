@@ -33,6 +33,21 @@ return [
             'account_holder_name',
             'name',
         ],
+
+        /*
+         * Extracted-field keys that hold the company registration number
+         * (e.g. from an SSM profile), in priority order.
+         */
+        'registration_keys' => [
+            'registration_no',
+            'registration_number',
+            'company_no',
+            'company_number',
+            'company_registration_no',
+            'ssm_no',
+            'ssm_number',
+            'registration',
+        ],
     ],
 
     'raraxuan' => [

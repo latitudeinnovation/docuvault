@@ -23,7 +23,7 @@ class CompanyViewRenderTest extends TestCase
 
         $company = Company::factory()->create(['user_id' => $user->id]);
 
-        Document::factory()->create([
+        $ssm = Document::factory()->create([
             'user_id' => $user->id,
             'company_id' => $company->id,
             'document_type' => 'ssm',
@@ -33,13 +33,37 @@ class CompanyViewRenderTest extends TestCase
                 'extracted_fields' => ['company_name' => ['value' => 'AAD CONCEPT SDN. BHD.', 'confidence' => 0.98]],
             ]],
         ]);
+        $ssm->extractedFields()->create([
+            'field_key' => 'company_name', 'field_label' => 'Company Name',
+            'value' => 'AAD CONCEPT SDN. BHD.', 'status' => 'pending',
+        ]);
 
-        Document::factory()->count(2)->create([
+        $feb = Document::factory()->create([
             'user_id' => $user->id,
             'company_id' => $company->id,
             'document_type' => 'bank_account',
             'status' => DocumentStatus::NeedsReview,
             'ai_raw_json' => ['normalized_result' => ['document_type' => 'Bank Statement']],
+        ]);
+        $feb->extractedFields()->create([
+            'field_key' => 'statement_period_start', 'field_label' => 'Statement Period Start',
+            'value' => '01 February 2024', 'status' => 'pending',
+        ]);
+        $feb->extractedFields()->create([
+            'field_key' => 'account_holder_name', 'field_label' => 'Account Holder Name',
+            'value' => 'AAD CONCEPT SDN BHD', 'status' => 'pending',
+        ]);
+
+        $may = Document::factory()->create([
+            'user_id' => $user->id,
+            'company_id' => $company->id,
+            'document_type' => 'bank_account',
+            'status' => DocumentStatus::NeedsReview,
+            'ai_raw_json' => ['normalized_result' => ['document_type' => 'Bank Statement']],
+        ]);
+        $may->extractedFields()->create([
+            'field_key' => 'statement_period_start', 'field_label' => 'Statement Period Start',
+            'value' => '01 May 2024', 'status' => 'pending',
         ]);
 
         Livewire::test(ListCompanies::class)->assertOk();
@@ -48,6 +72,9 @@ class CompanyViewRenderTest extends TestCase
             ->assertOk()
             ->assertSee('AAD CONCEPT SDN. BHD.')
             ->assertSee('SSM')
-            ->assertSee('Bank Account');
+            ->assertSee('Bank Account')
+            ->assertSee('February 2024')   // month sub-navigation
+            ->assertSee('May 2024')
+            ->assertSee('Account Holder Name'); // readable label
     }
 }
