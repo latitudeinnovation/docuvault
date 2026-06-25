@@ -4,11 +4,11 @@ namespace App\Filament\Resources\Companies;
 
 use App\Filament\Resources\Companies\Pages\ListCompanies;
 use App\Filament\Resources\Companies\Pages\ViewCompany;
-use App\Filament\Resources\Companies\RelationManagers\DocumentsRelationManager;
 use App\Filament\Resources\Companies\Tables\CompaniesTable;
 use App\Models\Company;
 use BackedEnum;
 use Filament\Infolists\Components\TextEntry;
+use Filament\Infolists\Components\ViewEntry;
 use Filament\Resources\Resource;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
@@ -40,19 +40,19 @@ class CompanyResource extends Resource
                         ->badge()
                         ->state(fn (Company $record): int => $record->documents()->count()),
                 ]),
+
+            Section::make('Documents')
+                ->schema([
+                    ViewEntry::make('documents_tabs')
+                        ->hiddenLabel()
+                        ->view('filament.companies.documents-tabs'),
+                ]),
         ]);
     }
 
     public static function table(Table $table): Table
     {
         return CompaniesTable::configure($table);
-    }
-
-    public static function getRelations(): array
-    {
-        return [
-            DocumentsRelationManager::class,
-        ];
     }
 
     public static function getPages(): array
