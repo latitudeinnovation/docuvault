@@ -30,6 +30,7 @@ class CompanyResource extends Resource
         return $schema->components([
             Section::make('Company')
                 ->columns(3)
+                ->columnSpanFull()
                 ->schema([
                     TextEntry::make('name'),
                     TextEntry::make('registration_no')
@@ -42,6 +43,7 @@ class CompanyResource extends Resource
                 ]),
 
             Section::make('Documents')
+                ->columnSpanFull()
                 ->schema([
                     ViewEntry::make('documents_tabs')
                         ->hiddenLabel()
