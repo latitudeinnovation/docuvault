@@ -34,10 +34,13 @@ class DocumentForm
                                 ->maxLength(255)
                                 ->columnSpan(1),
 
-                            TextInput::make('document_type')
+                            Select::make('document_type')
+                                ->options([
+                                    'ssm' => 'SSM',
+                                    'bank_statement' => 'Bank Statement',
+                                ])
                                 ->default(config('docuvault.documents.default_type'))
                                 ->required()
-                                ->maxLength(255)
                                 ->columnSpan(1),
 
                             Hidden::make('status')
