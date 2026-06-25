@@ -5,6 +5,7 @@ namespace App\Jobs;
 use App\Enums\DocumentStatus;
 use App\Enums\ExtractedFieldStatus;
 use App\Models\Document;
+use App\Services\Documents\DocumentClassifier;
 use App\Services\Raraxuan\DocumentExtractionClient;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
@@ -77,7 +78,9 @@ class ProcessDocumentWithRaraxuan implements ShouldQueue
 
         $normalizedResponse = $this->normalizeResponse($response);
 
-        DB::transaction(function () use ($document, $normalizedResponse, $response): void {
+        $classifier = app(DocumentClassifier::class);
+
+        DB::transaction(function () use ($document, $normalizedResponse, $response, $classifier): void {
             $document->extractedFields()->delete();
 
             foreach ($this->extractFields($normalizedResponse) as $field) {
@@ -90,7 +93,11 @@ class ProcessDocumentWithRaraxuan implements ShouldQueue
                 ]);
             }
 
+            $company = $classifier->resolveCompany($document);
+
             $document->forceFill([
+                'company_id' => $company?->getKey(),
+                'document_type' => $classifier->resolveType($normalizedResponse),
                 'status' => DocumentStatus::NeedsReview,
                 'ai_confidence' => $this->overallConfidence($normalizedResponse),
                 'ai_raw_json' => array_replace($response, [
