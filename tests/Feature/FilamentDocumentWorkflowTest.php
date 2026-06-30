@@ -42,21 +42,45 @@ class FilamentDocumentWorkflowTest extends TestCase
         Queue::fake([ProcessDocumentWithRaraxuan::class]);
 
         Livewire::test(CreateDocument::class)
+            ->set('shouldProcess', true)
             ->set('data.user_id', $user->id)
-            ->set('data.title', 'Uploaded invoice')
-            ->set('data.document_type', 'invoice')
-            ->set('data.file_path', UploadedFile::fake()->create('invoice.pdf', 51200, 'application/pdf'))
+            ->set('data.title', 'Uploaded SSM')
+            ->set('data.document_type', 'ssm')
+            ->set('data.file_path', UploadedFile::fake()->create('ssm.pdf', 51200, 'application/pdf'))
             ->call('create')
             ->assertHasNoFormErrors();
 
         $document = Document::query()->firstOrFail();
 
         $this->assertSame($user->id, $document->user_id);
-        $this->assertSame('invoice', $document->document_type);
+        $this->assertSame('ssm', $document->document_type);
         $this->assertSame('local', $document->file_disk);
-        $this->assertSame('invoice.pdf', $document->original_file_name);
+        $this->assertSame('ssm.pdf', $document->original_file_name);
         Storage::disk('local')->assertExists($document->file_path);
+        $this->assertSame(DocumentStatus::Processing, $document->status);
         Queue::assertPushed(ProcessDocumentWithRaraxuan::class);
+    }
+
+    public function test_document_create_page_save_without_processing_does_not_dispatch(): void
+    {
+        $user = User::factory()->create();
+        $this->actingAs($user);
+
+        Storage::fake('local');
+        Queue::fake([ProcessDocumentWithRaraxuan::class]);
+
+        Livewire::test(CreateDocument::class)
+            ->set('shouldProcess', false)
+            ->set('data.user_id', $user->id)
+            ->set('data.title', 'Uploaded SSM')
+            ->set('data.document_type', 'ssm')
+            ->set('data.file_path', UploadedFile::fake()->create('ssm.pdf', 51200, 'application/pdf'))
+            ->call('create')
+            ->assertHasNoFormErrors();
+
+        $document = Document::query()->firstOrFail();
+        $this->assertSame(DocumentStatus::Uploaded, $document->status);
+        Queue::assertNotPushed(ProcessDocumentWithRaraxuan::class);
     }
 
     public function test_field_and_document_approval_actions_update_statuses(): void

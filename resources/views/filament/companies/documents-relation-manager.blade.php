@@ -1,5 +1,6 @@
 @php
-    use App\Enums\DocumentType;
+    use App\Enums\DocumentType as DocumentTypeEnum;
+    use App\Models\DocumentType;
 
     /** @var \App\Models\Company $company */
     $documents = $company->documents()
@@ -7,9 +8,10 @@
         ->orderByRaw('processed_at IS NULL, processed_at DESC')
         ->get();
 
-    $order = [DocumentType::Ssm->value, DocumentType::BankAccount->value, DocumentType::General->value];
+    $types = DocumentType::ordered();
+    $order = $types->keys()->all();
 
-    $groups = $documents->groupBy(fn ($d) => DocumentType::fromValue($d->document_type)->value);
+    $groups = $documents->groupBy(fn ($d) => (string) ($d->document_type ?: DocumentTypeEnum::General->value));
 
     $tabKeys = collect($order)
         ->filter(fn ($k) => $groups->has($k))
@@ -26,22 +28,22 @@
         <div x-data="{ type: 0 }" style="display:flex;flex-direction:column;gap:1.5rem">
             <x-filament::tabs>
                 @foreach ($tabKeys as $key)
-                    @php $type = DocumentType::fromValue($key); @endphp
+                    @php $type = $types[$key] ?? DocumentType::resolve($key); @endphp
                     <x-filament::tabs.item
                         tag="button"
-                        :icon="$type->getIcon()"
+                        :icon="$type->icon"
                         :badge="$groups[$key]->count()"
                         x-on:click="type = {{ $loop->index }}"
                         :alpine-active="'type === '.$loop->index"
                     >
-                        {{ $type->getLabel() }}
+                        {{ $type->label }}
                     </x-filament::tabs.item>
                 @endforeach
             </x-filament::tabs>
 
             @foreach ($tabKeys as $key)
                 <div x-show="type === {{ $loop->index }}" @if (! $loop->first) x-cloak @endif style="display:flex;flex-direction:column;gap:1.25rem">
-                    @if ($key === DocumentType::BankAccount->value)
+                    @if ($key === DocumentTypeEnum::BankAccount->value)
                         @php
                             $byMonth = $groups[$key]
                                 ->sortBy(fn ($d) => optional($d->periodDate())->getTimestamp() ?? 0)

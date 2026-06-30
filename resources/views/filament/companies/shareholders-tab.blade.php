@@ -19,7 +19,7 @@
             <div style="display:flex;align-items:center;gap:0.5rem">
                 <x-filament::badge color="warning">Shareholder</x-filament::badge>
                 @if ($shares)
-                    <span style="font-size:0.75rem;color:#6b7280">{{ number_format((int) $shares) }} shares</span>
+                    <span style="font-size:0.75rem;color:#6b7280">{{ number_format((int) str_replace(',', '', $shares)) }} shares</span>
                 @endif
             </div>
         </div>

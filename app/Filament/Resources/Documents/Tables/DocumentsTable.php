@@ -35,6 +35,11 @@ class DocumentsTable
                     ->searchable()
                     ->sortable(),
                 TextColumn::make('document_type')
+                    ->label('Type')
+                    ->badge()
+                    ->formatStateUsing(fn (?string $state): string => \App\Models\DocumentType::resolve($state)->label)
+                    ->color(fn (?string $state): string => \App\Models\DocumentType::resolve($state)->color)
+                    ->icon(fn (?string $state): string => \App\Models\DocumentType::resolve($state)->icon)
                     ->searchable()
                     ->sortable(),
                 TextColumn::make('status')
@@ -59,10 +64,12 @@ class DocumentsTable
                 SelectFilter::make('status')
                     ->options(DocumentStatus::class),
                 SelectFilter::make('document_type')
+                    ->label('Type')
                     ->options(fn(): array => Document::query()
                         ->distinct()
                         ->orderBy('document_type')
-                        ->pluck('document_type', 'document_type')
+                        ->pluck('document_type')
+                        ->mapWithKeys(fn (?string $key): array => [$key => \App\Models\DocumentType::resolve($key)->label])
                         ->all()),
             ])
             ->recordActions([
