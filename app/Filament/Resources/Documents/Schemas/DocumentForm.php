@@ -35,11 +35,8 @@ class DocumentForm
                                 ->columnSpan(1),
 
                             Select::make('document_type')
-                                ->options([
-                                    'ssm' => 'SSM',
-                                    'bank_account' => 'Bank Account',
-                                ])
-                                ->default(config('docuvault.documents.default_type'))
+                                ->options(fn (): array => \App\Models\DocumentType::selectOptions())
+                                ->placeholder('Select a document type')
                                 ->required()
                                 ->columnSpan(1),
 

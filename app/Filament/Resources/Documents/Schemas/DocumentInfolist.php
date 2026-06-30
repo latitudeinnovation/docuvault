@@ -27,7 +27,11 @@ class DocumentInfolist
                         TextEntry::make('owner.name')
                             ->label('Owner'),
                         TextEntry::make('document_type')
-                            ->label('Document type'),
+                            ->label('Document type')
+                            ->badge()
+                            ->formatStateUsing(fn (?string $state): string => \App\Models\DocumentType::resolve($state)->label)
+                            ->color(fn (?string $state): string => \App\Models\DocumentType::resolve($state)->color)
+                            ->icon(fn (?string $state): string => \App\Models\DocumentType::resolve($state)->icon),
                         TextEntry::make('status')
                             ->badge(),
                         TextEntry::make('failure_reason')
@@ -42,7 +46,10 @@ class DocumentInfolist
                             ->label('MIME type'),
                         TextEntry::make('ai_confidence')
                             ->label('Confidence')
-                            ->numeric(decimalPlaces: 2),
+                            ->placeholder('—')
+                            ->formatStateUsing(fn (?string $state): ?string => $state === null
+                                ? null
+                                : round((float) $state * 100).'% ('.number_format((float) $state, 2).')'),
                         TextEntry::make('processed_at')
                             ->dateTime(),
                     ])

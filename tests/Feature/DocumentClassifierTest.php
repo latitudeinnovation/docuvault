@@ -29,6 +29,23 @@ class DocumentClassifierTest extends TestCase
         $this->assertSame('201701033484 (1247655-A)', $company->registration_no);
     }
 
+    public function test_resolve_company_handles_bahasa_melayu_field_labels(): void
+    {
+        $user = User::factory()->create();
+
+        $document = Document::factory()->create(['user_id' => $user->id, 'company_id' => null]);
+        $document->extractedFields()->createMany([
+            ['field_key' => 'Nama Perniagaan', 'field_label' => 'Nama Perniagaan', 'value' => 'KEDAI RUNCIT MAJU', 'status' => 'pending'],
+            ['field_key' => 'No. Pendaftaran', 'field_label' => 'No. Pendaftaran', 'value' => '202301099999 (1599999-X)', 'status' => 'pending'],
+        ]);
+
+        $company = app(DocumentClassifier::class)->resolveCompany($document->fresh('extractedFields'));
+
+        $this->assertNotNull($company);
+        $this->assertSame('KEDAI RUNCIT MAJU', $company->name);
+        $this->assertSame('202301099999 (1599999-X)', $company->registration_no);
+    }
+
     public function test_resolve_company_does_not_overwrite_existing_registration_number(): void
     {
         $user = User::factory()->create();

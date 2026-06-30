@@ -1,5 +1,6 @@
 @php
-    use App\Enums\DocumentType;
+    use App\Enums\DocumentType as DocumentTypeEnum;
+    use App\Models\DocumentType;
 
     /** @var \App\Models\Company $company */
     $company = $getRecord();
@@ -9,10 +10,12 @@
         ->orderByRaw('processed_at IS NULL, processed_at DESC')
         ->get();
 
-    // Tab order: SSM, Bank Account, General, then any other types present.
-    $order = [DocumentType::Ssm->value, DocumentType::BankAccount->value, DocumentType::General->value];
+    // Tab order follows the admin-managed document types, then any other types
+    // still present on documents (e.g. a since-deleted type).
+    $types = DocumentType::ordered();
+    $order = $types->keys()->all();
 
-    $groups = $documents->groupBy(fn ($d) => DocumentType::fromValue($d->document_type)->value);
+    $groups = $documents->groupBy(fn ($d) => (string) ($d->document_type ?: DocumentTypeEnum::General->value));
 
     $tabKeys = collect($order)
         ->filter(fn ($k) => $groups->has($k))
@@ -29,15 +32,15 @@
         {{-- Document-type selector --}}
         <x-filament::tabs>
             @foreach ($tabKeys as $key)
-                @php $type = DocumentType::fromValue($key); @endphp
+                @php $type = $types[$key] ?? DocumentType::resolve($key); @endphp
                 <x-filament::tabs.item
                     tag="button"
-                    :icon="$type->getIcon()"
+                    :icon="$type->icon"
                     :badge="$groups[$key]->count()"
                     x-on:click="type = {{ $loop->index }}"
                     :alpine-active="'type === '.$loop->index"
                 >
-                    {{ $type->getLabel() }}
+                    {{ $type->label }}
                 </x-filament::tabs.item>
             @endforeach
         </x-filament::tabs>
@@ -45,7 +48,7 @@
         {{-- Type panels --}}
         @foreach ($tabKeys as $key)
             <div x-show="type === {{ $loop->index }}" @if (! $loop->first) x-cloak @endif style="display:flex;flex-direction:column;gap:1.25rem">
-                @if ($key === DocumentType::BankAccount->value)
+                @if ($key === DocumentTypeEnum::BankAccount->value)
                     {{-- Bank accounts grouped by statement month --}}
                     @php
                         $byMonth = $groups[$key]
@@ -77,10 +80,16 @@
                         @endforeach
                     </div>
                 @else
-                    {{-- SSM / other types: list documents directly --}}
-                    @foreach ($groups[$key] as $document)
-                        @include('filament.companies._document-fields', ['document' => $document])
-                    @endforeach
+                    {{-- SSM / other types: newest record expanded, older records collapsed --}}
+                    <div style="display:flex;flex-direction:column;gap:2rem">
+                        @foreach ($groups[$key] as $document)
+                            @include('filament.companies._document-fields', [
+                                'document' => $document,
+                                'collapsible' => ! $loop->first,
+                                'collapsed' => ! $loop->first,
+                            ])
+                        @endforeach
+                    </div>
                 @endif
             </div>
         @endforeach

@@ -37,10 +37,15 @@ class DocumentClassifier
     }
 
     /**
-     * Find (or create) the company a document belongs to, based on its already
-     * persisted extracted fields. Returns null when no company name is present.
+     * Resolve the company a document belongs to, based on its already persisted
+     * extracted fields. Returns null when no company name is present.
+     *
+     * When $create is true (SSM documents) a company is created if none exists
+     * and its registration number is backfilled. When false (other types) the
+     * document only links to an already-existing company by name, never creating
+     * one nor mutating its details.
      */
-    public function resolveCompany(Document $document): ?Company
+    public function resolveCompany(Document $document, bool $create = true): ?Company
     {
         $name = $this->firstFieldValue($document, config('docuvault.company.name_keys', []), rejectNumeric: true);
 
@@ -49,6 +54,13 @@ class DocumentClassifier
         }
 
         $slug = Company::slugFor($name);
+
+        if (! $create) {
+            return Company::query()
+                ->where('user_id', $document->user_id)
+                ->where('slug', $slug)
+                ->first();
+        }
 
         $company = Company::firstOrCreate(
             ['user_id' => $document->user_id, 'slug' => $slug],
