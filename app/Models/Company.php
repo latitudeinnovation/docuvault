@@ -47,6 +47,11 @@ class Company extends Model
             ->withTimestamps();
     }
 
+    public function bankAccounts(): HasMany
+    {
+        return $this->hasMany(BankAccount::class);
+    }
+
     /**
      * @return HasMany<Document, $this>
      */
