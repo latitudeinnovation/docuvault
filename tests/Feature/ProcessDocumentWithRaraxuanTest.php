@@ -417,28 +417,12 @@ class ProcessDocumentWithRaraxuanTest extends TestCase
         Storage::fake('local');
 
         $user = \App\Models\User::factory()->create();
-
-        // Create the company first via an SSM document.
-        Storage::disk('local')->put('documents/ssm.pdf', 'bytes');
-        Http::fake([
-            'https://ai.raraxuan.test/api/v1/prompts/process' => Http::response([
-                'success' => true,
-                'data' => ['result' => json_encode([
-                    'extracted_fields' => ['company_name' => 'AAD CONCEPT SDN BHD'],
-                    'overall_confidence' => 1.0,
-                ])],
-            ]),
-        ]);
-        $ssm = Document::factory()->create([
+        $company = Company::factory()->create([
             'user_id' => $user->id,
-            'document_type' => 'ssm',
-            'file_disk' => 'local',
-            'file_path' => 'documents/ssm.pdf',
-            'file_type' => 'application/pdf',
+            'name' => 'AAD CONCEPT SDN BHD',
+            'slug' => Company::slugFor('AAD CONCEPT SDN BHD'),
         ]);
-        (new ProcessDocumentWithRaraxuan($ssm))->handle();
 
-        // Process a bank-account document for the same company.
         Storage::disk('local')->put('documents/bank.pdf', 'bytes');
         Http::fake([
             'https://ai.raraxuan.test/api/v1/prompts/process' => Http::response([
@@ -461,12 +445,9 @@ class ProcessDocumentWithRaraxuanTest extends TestCase
         ]);
         (new ProcessDocumentWithRaraxuan($bank))->handle();
 
-        $ssm->refresh();
-        $bank->refresh();
-
         $bankAccount = \App\Models\BankAccount::where('account_no', '262205000947')->first();
         $this->assertNotNull($bankAccount);
-        $this->assertSame($ssm->company_id, $bankAccount->company_id);
+        $this->assertSame($company->id, $bankAccount->company_id);
     }
 
     public function test_processing_failure_marks_document_failed(): void
