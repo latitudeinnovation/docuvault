@@ -72,6 +72,14 @@ class CompanyResource extends Resource
                                 ->hiddenLabel()
                                 ->view('filament.companies.shareholders-tab'),
                         ]),
+
+                    Tab::make('Bank Accounts')
+                        ->icon(Heroicon::Banknotes)
+                        ->schema([
+                            ViewEntry::make('bank_accounts_tab')
+                                ->hiddenLabel()
+                                ->view('filament.companies.bank-accounts-tab'),
+                        ]),
                 ]),
         ]);
     }
