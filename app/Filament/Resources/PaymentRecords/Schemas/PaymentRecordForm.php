@@ -2,17 +2,19 @@
 
 namespace App\Filament\Resources\PaymentRecords\Schemas;
 
+use App\Models\Company;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Textarea;
 use Filament\Schemas\Schema;
+use Illuminate\Support\Facades\Auth; // Import the Auth facade
 
 class PaymentRecordForm
 {
     public static function configure(Schema $schema): Schema
     {
         return $schema
-            ->schema([  // <-- FIX 1: Changed "components" to "schema"
+            ->schema([
                 Select::make('transaction_type')
                     ->label('Type')
                     ->options([
@@ -23,13 +25,34 @@ class PaymentRecordForm
 
                 Select::make('company_id')
                     ->label('Company')
-                    ->relationship('company', 'name')
+                    ->relationship(
+                        name: 'company', 
+                        titleAttribute: 'name',
+                        // Replaced auth()->id() with Auth::id() to clear the IDE warning
+                        modifyQueryUsing: fn ($query) => $query->where('user_id', Auth::id())
+                    )
                     ->searchable()
                     ->preload()
                     ->required()
                     ->live()
-                    // FIX 2: Removed the "Set" type hint to clear the editor error
-                    ->afterStateUpdated(fn ($set) => $set('bank_account', null)),
+                    ->afterStateUpdated(fn ($set) => $set('bank_account', null))
+                    ->loadingMessage('Loading corporate profiles...')
+                    ->createOptionForm([
+                        TextInput::make('name')
+                            ->label('Company Name')
+                            ->required()
+                            ->maxLength(255),
+                    ])
+                    ->createOptionUsing(function (array $data) {
+                        // Replaced auth()->id() with Auth::id() here as well
+                        $company = Company::create([
+                            'user_id' => Auth::id(),
+                            'name' => $data['name'],
+                            'slug' => Company::slugFor($data['name']),
+                        ]);
+                        
+                        return $company->getKey();
+                    }),
 
                 TextInput::make('bank_account')
                     ->label('Bank Account')
