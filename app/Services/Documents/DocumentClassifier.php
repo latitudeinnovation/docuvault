@@ -87,6 +87,24 @@ class DocumentClassifier
     }
 
     /**
+     * The company name as extracted from the document, for prefilling a
+     * manual company-create form. Null when no name field is present.
+     */
+    public function extractedCompanyName(Document $document): ?string
+    {
+        return $this->firstFieldValue($document, config('docuvault.company.name_keys', []), rejectNumeric: true);
+    }
+
+    /**
+     * The company registration number as extracted from the document, for
+     * prefilling a manual company-create form. Null when not present.
+     */
+    public function extractedRegistrationNo(Document $document): ?string
+    {
+        return $this->firstFieldValue($document, config('docuvault.company.registration_keys', []), rejectNumeric: false);
+    }
+
+    /**
      * Fall back to resolving a company via an already-known bank account
      * number when the printed company name doesn't slug-match anything (e.g.
      * OCR punctuation/whitespace variance across statements for the same
