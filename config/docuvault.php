@@ -98,6 +98,21 @@ return [
         ],
     ],
 
+    'bank_accounts' => [
+        /*
+         * Extracted-field keys (matched against a normalized field_key, same
+         * normalization as company.name_keys) that hold each bank-account
+         * attribute, in priority order.
+         */
+        'account_no_keys' => ['account_no', 'account_number', 'acc_no'],
+
+        'account_holder_keys' => ['account_holder_name', 'account_holder', 'account_name', 'company_name'],
+
+        'bank_name_keys' => ['bank_account_product', 'account_product', 'bank_name', 'bank'],
+
+        'account_type_keys' => ['account_type'],
+    ],
+
     'raraxuan' => [
         'document_agent' => env('RARAXUAN_DOCUMENT_AGENT', 'doc-universal-extractor'),
     ],
