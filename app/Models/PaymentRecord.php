@@ -11,7 +11,6 @@ class PaymentRecord extends Model
         'transaction_type',
         'category',
         'bank_account',
-        'main_account',
         'amount',
         'remarks',
     ];

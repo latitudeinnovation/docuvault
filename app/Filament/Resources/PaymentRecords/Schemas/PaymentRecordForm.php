@@ -2,10 +2,12 @@
 
 namespace App\Filament\Resources\PaymentRecords\Schemas;
 
+use App\Models\BankAccount;
 use App\Models\Company;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Textarea;
+use Filament\Schemas\Components\Utilities\Get;
 use Filament\Schemas\Schema;
 use Illuminate\Support\Facades\Auth; // Import the Auth facade
 
@@ -24,7 +26,7 @@ class PaymentRecordForm
                     ->required(),
 
                 Select::make('company_id')
-                    ->label('Company')
+                    ->label('Main Account')
                     ->relationship(
                         name: 'company', 
                         titleAttribute: 'name',
@@ -54,16 +56,28 @@ class PaymentRecordForm
                         return $company->getKey();
                     }),
 
-                TextInput::make('bank_account')
+                Select::make('bank_account')
                     ->label('Bank Account')
+                    ->options(function (Get $get) {
+                        $companyId = $get('company_id');
+
+                        if (! $companyId) {
+                            return [];
+                        }
+
+                        return BankAccount::query()
+                            ->where('company_id', $companyId)
+                            ->get()
+                            ->mapWithKeys(fn (BankAccount $account) => [
+                                $account->account_no => "{$account->bank_name} - {$account->account_no}",
+                            ]);
+                    })
+                    ->searchable()
+                    ->disabled(fn (Get $get) => ! $get('company_id'))
                     ->required(),
 
                 TextInput::make('category')
-                    ->label('Incoming Category')
-                    ->required(),
-
-                TextInput::make('main_account')
-                    ->label('Main Account')
+                    ->label('Category')
                     ->required(),
 
                 TextInput::make('amount')
