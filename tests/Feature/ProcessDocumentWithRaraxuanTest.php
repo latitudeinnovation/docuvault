@@ -408,6 +408,67 @@ class ProcessDocumentWithRaraxuanTest extends TestCase
         $this->assertSame(1, Company::query()->count());
     }
 
+    public function test_bank_account_document_syncs_a_bank_account_when_company_resolved(): void
+    {
+        config()->set('raraxuan.base_url', 'https://ai.raraxuan.test/api');
+        config()->set('raraxuan.api_key', 'rx_test_key');
+        config()->set('docuvault.raraxuan.document_agent', 'doc-universal-extractor');
+
+        Storage::fake('local');
+
+        $user = \App\Models\User::factory()->create();
+
+        // Create the company first via an SSM document.
+        Storage::disk('local')->put('documents/ssm.pdf', 'bytes');
+        Http::fake([
+            'https://ai.raraxuan.test/api/v1/prompts/process' => Http::response([
+                'success' => true,
+                'data' => ['result' => json_encode([
+                    'extracted_fields' => ['company_name' => 'AAD CONCEPT SDN BHD'],
+                    'overall_confidence' => 1.0,
+                ])],
+            ]),
+        ]);
+        $ssm = Document::factory()->create([
+            'user_id' => $user->id,
+            'document_type' => 'ssm',
+            'file_disk' => 'local',
+            'file_path' => 'documents/ssm.pdf',
+            'file_type' => 'application/pdf',
+        ]);
+        (new ProcessDocumentWithRaraxuan($ssm))->handle();
+
+        // Process a bank-account document for the same company.
+        Storage::disk('local')->put('documents/bank.pdf', 'bytes');
+        Http::fake([
+            'https://ai.raraxuan.test/api/v1/prompts/process' => Http::response([
+                'success' => true,
+                'data' => ['result' => json_encode([
+                    'extracted_fields' => [
+                        'company_name' => 'AAD CONCEPT SDN BHD',
+                        'account_no' => '262205000947',
+                    ],
+                    'overall_confidence' => 0.98,
+                ])],
+            ]),
+        ]);
+        $bank = Document::factory()->create([
+            'user_id' => $user->id,
+            'document_type' => 'bank_account',
+            'file_disk' => 'local',
+            'file_path' => 'documents/bank.pdf',
+            'file_type' => 'application/pdf',
+        ]);
+        (new ProcessDocumentWithRaraxuan($bank))->handle();
+
+        $ssm->refresh();
+        $bank->refresh();
+
+        $bankAccount = \App\Models\BankAccount::where('account_no', '262205000947')->first();
+        $this->assertNotNull($bankAccount);
+        $this->assertSame($ssm->company_id, $bankAccount->company_id);
+    }
+
     public function test_processing_failure_marks_document_failed(): void
     {
         Storage::fake('local');

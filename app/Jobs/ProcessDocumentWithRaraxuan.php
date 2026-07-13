@@ -8,6 +8,7 @@ use App\Enums\ExtractedFieldStatus;
 use App\Models\Document;
 use App\Services\Documents\DirectorExtractor;
 use App\Services\Documents\ShareholderExtractor;
+use App\Services\Documents\BankAccountExtractor;
 use App\Services\Documents\DocumentClassifier;
 use App\Services\Raraxuan\DocumentExtractionClient;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -106,11 +107,16 @@ class ProcessDocumentWithRaraxuan implements ShouldQueue
             // shareholders). Other types link to an existing company by name if
             // one is found, but never create one.
             $isSsm = $document->document_type === DocumentType::Ssm->value;
+            $isBankAccount = $document->document_type === DocumentType::BankAccount->value;
             $company = $classifier->resolveCompany($document, create: $isSsm);
 
             if ($company !== null && $isSsm) {
                 app(DirectorExtractor::class)->syncFromDocument($document, $company);
                 app(ShareholderExtractor::class)->syncFromDocument($document, $company);
+            }
+
+            if ($company !== null && $isBankAccount) {
+                app(BankAccountExtractor::class)->syncFromDocument($document, $company);
             }
 
             $document->forceFill([
