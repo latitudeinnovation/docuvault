@@ -2,6 +2,8 @@
 
 namespace Tests\Feature;
 
+use App\Models\BankAccount;
+use App\Models\Company;
 use App\Models\Document;
 use App\Models\User;
 use App\Services\Documents\DocumentClassifier;
@@ -67,5 +69,45 @@ class DocumentClassifierTest extends TestCase
         $company = app(DocumentClassifier::class)->resolveCompany($second->fresh('extractedFields'));
 
         $this->assertSame('ORIGINAL-REG', $company->registration_no);
+    }
+
+    public function test_resolve_company_falls_back_to_bank_account_number_when_name_does_not_match(): void
+    {
+        $user = User::factory()->create();
+        $company = Company::factory()->create(['user_id' => $user->id, 'name' => 'AAD CONCEPT SDN BHD']);
+        BankAccount::factory()->create([
+            'user_id' => $user->id,
+            'company_id' => $company->id,
+            'account_no' => '26220500009447',
+            'slug' => BankAccount::slugFor('26220500009447'),
+        ]);
+
+        // OCR on this statement read the printed company name slightly differently,
+        // so it won't slug-match the company above, but the account number matches.
+        $document = Document::factory()->create(['user_id' => $user->id, 'company_id' => null]);
+        $document->extractedFields()->createMany([
+            ['field_key' => 'company_name', 'field_label' => 'Company Name', 'value' => 'AAD CONCEPT SON BHD', 'status' => 'pending'],
+            ['field_key' => 'account_no', 'field_label' => 'Account Number', 'value' => '2622-0500-009447', 'status' => 'pending'],
+        ]);
+
+        $resolved = app(DocumentClassifier::class)->resolveCompany($document->fresh('extractedFields'), create: false);
+
+        $this->assertNotNull($resolved);
+        $this->assertTrue($resolved->is($company));
+    }
+
+    public function test_resolve_company_returns_null_when_neither_name_nor_account_match(): void
+    {
+        $user = User::factory()->create();
+
+        $document = Document::factory()->create(['user_id' => $user->id, 'company_id' => null]);
+        $document->extractedFields()->createMany([
+            ['field_key' => 'company_name', 'field_label' => 'Company Name', 'value' => 'UNKNOWN ENTITY SDN BHD', 'status' => 'pending'],
+            ['field_key' => 'account_no', 'field_label' => 'Account Number', 'value' => '999999999', 'status' => 'pending'],
+        ]);
+
+        $resolved = app(DocumentClassifier::class)->resolveCompany($document->fresh('extractedFields'), create: false);
+
+        $this->assertNull($resolved);
     }
 }
