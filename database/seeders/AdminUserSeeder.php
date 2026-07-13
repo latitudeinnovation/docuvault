@@ -19,7 +19,6 @@ class AdminUserSeeder extends Seeder
     public function run(Config $config): void
     {
         $password = $config->get('admin.user.password');
-        $password = '123456789';
 
         if (! is_string($password) || $password === '') {
             throw new RuntimeException('ADMIN_USER_PASSWORD must be set before seeding the admin user.');
