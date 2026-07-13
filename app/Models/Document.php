@@ -87,14 +87,35 @@ class Document extends Model
                 $value = trim($m[1]);
             }
 
-            try {
-                return Carbon::parse($value);
-            } catch (\Throwable) {
-                // Unparseable date string — try the next candidate.
+            if ($parsed = $this->parseDateValue($value)) {
+                return $parsed;
             }
         }
 
         return $this->processed_at;
+    }
+
+    /**
+     * Parse a raw extracted date string that may be in day-first slash/dash
+     * notation (e.g. "31/12/2023", as used by MY bank statements) — a format
+     * Carbon::parse() misreads as US month-first and rejects — before falling
+     * back to Carbon's general parser for other formats (e.g. "29 February 2024").
+     */
+    private function parseDateValue(string $value): ?Carbon
+    {
+        foreach (['d/m/Y', 'd-m-Y'] as $format) {
+            try {
+                return Carbon::createFromFormat($format, $value)->startOfDay();
+            } catch (\Throwable) {
+                // Doesn't match this explicit format — try the next one.
+            }
+        }
+
+        try {
+            return Carbon::parse($value);
+        } catch (\Throwable) {
+            return null;
+        }
     }
 
     /**
