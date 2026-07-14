@@ -28,10 +28,8 @@ class PaymentRecordForm
                 Select::make('company_id')
                     ->label('Main Account')
                     ->relationship(
-                        name: 'company', 
+                        name: 'company',
                         titleAttribute: 'name',
-                        // Replaced auth()->id() with Auth::id() to clear the IDE warning
-                        modifyQueryUsing: fn ($query) => $query->where('user_id', Auth::id())
                     )
                     ->searchable()
                     ->preload()
