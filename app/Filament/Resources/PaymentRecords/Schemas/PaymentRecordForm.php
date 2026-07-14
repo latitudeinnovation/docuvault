@@ -67,7 +67,7 @@ class PaymentRecordForm
                             ->where('company_id', $companyId)
                             ->get()
                             ->mapWithKeys(fn (BankAccount $account) => [
-                                $account->account_no => "{$account->bank_name} - {$account->account_no}",
+                                $account->account_no => $account->account_no,
                             ]);
                     })
                     ->searchable()

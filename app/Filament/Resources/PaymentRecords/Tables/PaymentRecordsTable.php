@@ -47,8 +47,7 @@ class PaymentRecordsTable
                     ->money('MYR')
                     ->sortable(),
                 TextColumn::make('remarks')
-                    ->limit(40)
-                    ->toggleable(isToggledHiddenByDefault: true),
+                    ->limit(40),
                 TextColumn::make('created_at')
                     ->label('Date')
                     ->dateTime('d M Y')
