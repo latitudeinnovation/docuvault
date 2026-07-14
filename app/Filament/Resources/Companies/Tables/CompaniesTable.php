@@ -18,7 +18,11 @@ class CompaniesTable
                 ->withCount([
                     'documents',
                     'documents as ssm_count' => fn (Builder $q) => $q->where('document_type', DocumentType::Ssm->value),
-                    'documents as bank_account_count' => fn (Builder $q) => $q->where('document_type', DocumentType::BankAccount->value),
+                    'documents as bank_doc_count' => fn (Builder $q) => $q->where('document_type', DocumentType::BankAccount->value),
+                    'documents as general_doc_count' => fn (Builder $q) => $q->where('document_type', DocumentType::General->value),
+                    'directors',
+                    'shareholders',
+                    'bankAccounts',
                 ]))
             ->columns([
                 TextColumn::make('name')
@@ -31,11 +35,33 @@ class CompaniesTable
                 TextColumn::make('ssm_count')
                     ->label('SSM')
                     ->badge()
-                    ->color(DocumentType::Ssm->getColor()),
-                TextColumn::make('bank_account_count')
-                    ->label('Bank Account')
+                    ->color(DocumentType::Ssm->getColor())
+                    ->toggleable(isToggledHiddenByDefault: true),
+                TextColumn::make('bank_doc_count')
+                    ->label('Bank Docs')
                     ->badge()
-                    ->color(DocumentType::BankAccount->getColor()),
+                    ->color(DocumentType::BankAccount->getColor())
+                    ->toggleable(isToggledHiddenByDefault: true),
+                TextColumn::make('general_doc_count')
+                    ->label('General')
+                    ->badge()
+                    ->color(DocumentType::General->getColor())
+                    ->toggleable(isToggledHiddenByDefault: true),
+                TextColumn::make('directors_count')
+                    ->label('Directors')
+                    ->badge()
+                    ->color('warning')
+                    ->sortable(),
+                TextColumn::make('shareholders_count')
+                    ->label('Shareholders')
+                    ->badge()
+                    ->color('warning')
+                    ->sortable(),
+                TextColumn::make('bank_accounts_count')
+                    ->label('Bank Accounts')
+                    ->badge()
+                    ->color('success')
+                    ->sortable(),
                 TextColumn::make('created_at')
                     ->dateTime()
                     ->sortable()

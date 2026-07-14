@@ -77,4 +77,25 @@ class CompanyViewRenderTest extends TestCase
             ->assertSee('May 2024')
             ->assertSee('Account Holder Name'); // readable label
     }
+
+    public function test_company_view_shows_bank_accounts_tab(): void
+    {
+        $user = User::factory()->create();
+        $this->actingAs($user);
+
+        $company = Company::factory()->create(['user_id' => $user->id]);
+
+        \App\Models\BankAccount::factory()->create([
+            'user_id' => $user->id,
+            'company_id' => $company->id,
+            'account_no' => '262205000947',
+            'account_holder_name' => 'AAD CONCEPT SDN BHD',
+            'bank_name' => 'RHB Reflex Cash Management',
+        ]);
+
+        Livewire::test(ViewCompany::class, ['record' => $company->getKey()])
+            ->assertOk()
+            ->assertSee('262205000947')
+            ->assertSee('RHB Reflex Cash Management');
+    }
 }

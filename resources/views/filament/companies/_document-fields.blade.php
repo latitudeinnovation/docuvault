@@ -1,16 +1,25 @@
 @php
-    use App\Enums\DocumentType;
+    use App\Models\DocumentType;
     use App\Support\JsonPresenter;
 
     /** @var \App\Models\Document $document */
     $fields = $document->extractedFields;
     $json = JsonPresenter::pretty(JsonPresenter::normalized($document)) ?? '';
 
-    $type = DocumentType::fromValue($document->document_type);
+    $type = DocumentType::resolve($document->document_type);
     $confidence = $document->ai_confidence !== null ? (int) round(((float) $document->ai_confidence) * 100) : null;
+
+    $collapsible ??= false;
+    $collapsed ??= false;
 @endphp
 
-<x-filament::section :icon="$type->getIcon()" :icon-color="$type->getColor()" compact>
+<x-filament::section
+    :icon="$type->icon"
+    :icon-color="$type->color"
+    compact
+    :collapsible="$collapsible"
+    :collapsed="$collapsed"
+>
     <x-slot name="heading">{{ $document->title }}</x-slot>
 
     <x-slot name="description">

@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\Documents\Pages;
 
+use App\Enums\DocumentStatus;
 use App\Filament\Resources\Documents\DocumentResource;
 use App\Jobs\ProcessDocumentWithRaraxuan;
 use App\Models\Document;
@@ -13,7 +14,7 @@ class CreateDocument extends CreateRecord
 {
     protected static string $resource = DocumentResource::class;
 
-    protected bool $shouldProcess = false;
+    public bool $shouldProcess = false;
 
     /**
      * @param  array<string, mixed>  $data
@@ -35,12 +36,16 @@ class CreateDocument extends CreateRecord
             Action::make('saveAndProcess')
                 ->label('Save & Process')
                 ->color('primary')
-                ->action(function () {
-                    $this->shouldProcess = true;
-                    $this->create();
-                }),
+                ->submit($this->getSubmitFormLivewireMethodName())
+                ->alpineClickHandler("\$wire.\$set('shouldProcess', true, false)"),
             $this->getCancelFormAction(),
         ];
+    }
+
+    protected function getCreateFormAction(): Action
+    {
+        return parent::getCreateFormAction()
+            ->alpineClickHandler("\$wire.\$set('shouldProcess', false, false)");
     }
 
     protected function afterCreate(): void
@@ -55,6 +60,9 @@ class CreateDocument extends CreateRecord
 
         $record->forceFill([
             'file_type' => $mimeType ?: $record->file_type,
+            // Reflect "Processing" right away so the view page doesn't show
+            // "Uploaded" until the queued job is picked up.
+            'status' => $this->shouldProcess ? DocumentStatus::Processing : $record->status,
         ])->save();
 
         if ($this->shouldProcess) {

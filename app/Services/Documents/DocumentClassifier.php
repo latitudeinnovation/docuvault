@@ -3,6 +3,7 @@
 namespace App\Services\Documents;
 
 use App\Enums\DocumentType;
+use App\Models\BankAccount;
 use App\Models\Company;
 use App\Models\Document;
 use Illuminate\Support\Str;
@@ -37,21 +38,37 @@ class DocumentClassifier
     }
 
     /**
-     * Find (or create) the company a document belongs to, based on its already
-     * persisted extracted fields. Returns null when no company name is present.
+     * Resolve the company a document belongs to, based on its already persisted
+     * extracted fields. Returns null when no company name is present.
+     *
+     * When $create is true (SSM documents) a company is created if none exists
+     * and its registration number is backfilled. When false (other types) the
+     * document only links to an already-existing company by name, never creating
+     * one nor mutating its details. When the name doesn't match any existing
+     * company (e.g. OCR variance on a bank statement's printed company name),
+     * falls back to matching by an already-known bank account number.
      */
-    public function resolveCompany(Document $document): ?Company
+    public function resolveCompany(Document $document, bool $create = true): ?Company
     {
         $name = $this->firstFieldValue($document, config('docuvault.company.name_keys', []), rejectNumeric: true);
+
+        if (! $create) {
+            $company = $name !== null
+                ? Company::query()
+                    ->where('user_id', $document->user_id)
+                    ->where('slug', Company::slugFor($name))
+                    ->first()
+                : null;
+
+            return $company ?? $this->resolveCompanyByBankAccount($document);
+        }
 
         if ($name === null) {
             return null;
         }
 
-        $slug = Company::slugFor($name);
-
         $company = Company::firstOrCreate(
-            ['user_id' => $document->user_id, 'slug' => $slug],
+            ['user_id' => $document->user_id, 'slug' => Company::slugFor($name)],
             ['name' => $name],
         );
 
@@ -67,6 +84,45 @@ class DocumentClassifier
         }
 
         return $company;
+    }
+
+    /**
+     * The company name as extracted from the document, for prefilling a
+     * manual company-create form. Null when no name field is present.
+     */
+    public function extractedCompanyName(Document $document): ?string
+    {
+        return $this->firstFieldValue($document, config('docuvault.company.name_keys', []), rejectNumeric: true);
+    }
+
+    /**
+     * The company registration number as extracted from the document, for
+     * prefilling a manual company-create form. Null when not present.
+     */
+    public function extractedRegistrationNo(Document $document): ?string
+    {
+        return $this->firstFieldValue($document, config('docuvault.company.registration_keys', []), rejectNumeric: false);
+    }
+
+    /**
+     * Fall back to resolving a company via an already-known bank account
+     * number when the printed company name doesn't slug-match anything (e.g.
+     * OCR punctuation/whitespace variance across statements for the same
+     * account). Never creates a bank account; only reuses an existing one.
+     */
+    private function resolveCompanyByBankAccount(Document $document): ?Company
+    {
+        $accountNo = $this->firstFieldValue($document, config('docuvault.bank_accounts.account_no_keys', []), rejectNumeric: false);
+
+        if ($accountNo === null) {
+            return null;
+        }
+
+        return BankAccount::query()
+            ->where('user_id', $document->user_id)
+            ->where('slug', BankAccount::slugFor($accountNo))
+            ->first()
+            ?->company;
     }
 
     /**

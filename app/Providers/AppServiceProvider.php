@@ -3,6 +3,8 @@
 namespace App\Providers;
 
 use Illuminate\Support\ServiceProvider;
+use App\Observers\ExtractedFieldObserver;
+use App\Models\ExtractedField;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -24,5 +26,7 @@ class AppServiceProvider extends ServiceProvider
             'file',
             'max:'.config('docuvault.documents.max_upload_size'),
         ]);
+
+        ExtractedField::observe(ExtractedFieldObserver::class);
     }
 }

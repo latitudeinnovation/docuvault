@@ -3,10 +3,12 @@
 namespace App\Jobs;
 
 use App\Enums\DocumentStatus;
+use App\Enums\DocumentType;
 use App\Enums\ExtractedFieldStatus;
 use App\Models\Document;
 use App\Services\Documents\DirectorExtractor;
 use App\Services\Documents\ShareholderExtractor;
+use App\Services\Documents\BankAccountExtractor;
 use App\Services\Documents\DocumentClassifier;
 use App\Services\Raraxuan\DocumentExtractionClient;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -101,16 +103,27 @@ class ProcessDocumentWithRaraxuan implements ShouldQueue
             // before the forceFill/save below persists it to the database.
             $document->ai_raw_json = $aiRawJson;
 
-            $company = $classifier->resolveCompany($document);
+            // Only SSM documents create a company (and its directors and
+            // shareholders). Other types link to an existing company by name if
+            // one is found, but never create one.
+            $isSsm = $document->document_type === DocumentType::Ssm->value;
+            $isBankAccount = $document->document_type === DocumentType::BankAccount->value;
+            $company = $classifier->resolveCompany($document, create: $isSsm);
 
-            if ($company !== null) {
+            if ($company !== null && $isSsm) {
                 app(DirectorExtractor::class)->syncFromDocument($document, $company);
                 app(ShareholderExtractor::class)->syncFromDocument($document, $company);
             }
 
+            if ($company !== null && $isBankAccount) {
+                app(BankAccountExtractor::class)->syncFromDocument($document, $company);
+            }
+
             $document->forceFill([
                 'company_id' => $company?->getKey(),
-                'document_type' => $classifier->resolveType($normalizedResponse),
+                // Respect the type the uploader chose; only fall back to the
+                // AI-derived type if none was set on the document.
+                'document_type' => $document->document_type ?: $classifier->resolveType($normalizedResponse),
                 'status' => DocumentStatus::NeedsReview,
                 'ai_confidence' => $this->overallConfidence($normalizedResponse),
                 'ai_raw_json' => $aiRawJson,
@@ -174,7 +187,21 @@ class ProcessDocumentWithRaraxuan implements ShouldQueue
                             }
                             [$categoryVal, $categoryCol] = $this->findRowCategory($row);
                             if ($categoryVal !== null && $categoryCol !== null) {
-                                $indexed[$categoryVal] = array_diff_key($row, [$categoryCol => null]);
+                                $remaining = array_diff_key($row, [$categoryCol => null]);
+
+                                // When the category column is a person/entity name
+                                // (e.g. "Name/Address"), it becomes the row's group
+                                // header but we re-add its name portion as a field so the
+                                // name is still shown explicitly. Non-name categories
+                                // (e.g. "CATEGORY" on a balance table) stay header-only.
+                                if ($this->isNameColumn($categoryCol)) {
+                                    $name = $this->nameFromCell($row[$categoryCol] ?? '');
+                                    if ($name !== '') {
+                                        $remaining = [$categoryCol => $name] + $remaining;
+                                    }
+                                }
+
+                                $indexed[$categoryVal] = $remaining;
                             } else {
                                 $indexed[] = $row;
                             }
@@ -264,6 +291,58 @@ class ProcessDocumentWithRaraxuan implements ShouldQueue
         }
 
         return [null, null];
+    }
+
+    /**
+     * Whether a table column header denotes a person/entity name (and therefore
+     * its value should also surface as a field, not just a group header).
+     */
+    private function isNameColumn(string $column): bool
+    {
+        $column = strtolower($column);
+
+        foreach (['name', 'address', 'company'] as $keyword) {
+            if (str_contains($column, $keyword)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Extract just the name from a "Name/Address" style cell: the first line of a
+     * multi-line cell, or the portion before a Malaysian address prefix when the
+     * name and address share a single line. Returns '' when there is no name.
+     */
+    private function nameFromCell(mixed $value): string
+    {
+        if (\is_array($value)) {
+            $value = array_key_exists('value', $value) ? $value['value'] : reset($value);
+        }
+
+        $lines = array_values(array_filter(array_map('trim', preg_split('/\r\n|\r|\n/', (string) $value) ?: [])));
+
+        if ($lines === []) {
+            return '';
+        }
+
+        if (count($lines) > 1) {
+            return $lines[0];
+        }
+
+        // Single line: strip a trailing address (NO.123 / 164-2-6 / LOT/UNIT/BLOCK/PT).
+        $addressStart = '/\s+(?=(?:NO\.?\s*\d|\d+[-\/]\d|\bLOT\s|\bUNIT\s|\bBLOCK\s|\bPT\s+\d))/i';
+
+        if (preg_match($addressStart, $lines[0], $matches, PREG_OFFSET_CAPTURE)) {
+            $name = trim(substr($lines[0], 0, (int) $matches[0][1]));
+
+            if ($name !== '') {
+                return $name;
+            }
+        }
+
+        return $lines[0];
     }
 
     /**

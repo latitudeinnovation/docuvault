@@ -28,10 +28,15 @@ return [
             'name_of_company',
             'registered_name',
             'company',
+            // Bahasa Melayu SSM documents.
+            'nama_syarikat',
+            'nama_perniagaan',
+            'nama_pertubuhan',
             'account_name',
             'account_holder',
             'account_holder_name',
             'name',
+            'nama',
         ],
 
         /*
@@ -47,6 +52,13 @@ return [
             'ssm_no',
             'ssm_number',
             'registration',
+            // Bahasa Melayu SSM documents. ("No. Pendaftaran" normalises to
+            // "pendaftaran" because the classifier treats "." as a path separator.)
+            'pendaftaran',
+            'no_pendaftaran',
+            'nombor_pendaftaran',
+            'no_syarikat',
+            'nombor_syarikat',
         ],
     ],
 
@@ -84,6 +96,21 @@ return [
             'ic' => ['ic', 'passport', 'registration', 'nric'],
             'shares' => ['share', 'shares', 'total'],
         ],
+    ],
+
+    'bank_accounts' => [
+        /*
+         * Extracted-field keys (matched against a normalized field_key, same
+         * normalization as company.name_keys) that hold each bank-account
+         * attribute, in priority order.
+         */
+        'account_no_keys' => ['account_no', 'account_number', 'acc_no'],
+
+        'account_holder_keys' => ['account_holder_name', 'account_holder', 'account_name', 'company_name'],
+
+        'bank_name_keys' => ['bank_account_product', 'account_product', 'bank_name', 'bank'],
+
+        'account_type_keys' => ['account_type'],
     ],
 
     'raraxuan' => [

@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Enums\DocumentStatus;
 use App\Enums\ExtractedFieldStatus;
 use App\Jobs\ProcessDocumentWithRaraxuan;
+use App\Models\Company;
 use App\Models\Document;
 use App\Models\ExtractedField;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -235,6 +236,218 @@ class ProcessDocumentWithRaraxuanTest extends TestCase
         ]);
 
         $this->assertSame('1.0000', $document->ai_confidence);
+    }
+
+    public function test_director_name_surfaces_as_a_field_separate_from_the_group_header(): void
+    {
+        config()->set('raraxuan.base_url', 'https://ai.raraxuan.test/api');
+        config()->set('raraxuan.api_key', 'rx_test_key');
+        config()->set('docuvault.raraxuan.document_agent', 'doc-universal-extractor');
+
+        Storage::fake('local');
+        Storage::disk('local')->put('documents/ssm.pdf', 'private document bytes');
+
+        Http::fake([
+            'https://ai.raraxuan.test/api/v1/prompts/process' => Http::response([
+                'success' => true,
+                'data' => [
+                    'result' => json_encode([
+                        'document_type' => 'SSM',
+                        'tables' => [
+                            [
+                                'table_name' => 'Directors / Officers',
+                                'data' => [
+                                    [
+                                        'Name/Address' => "WOH SAU HAA\nNO.179, TAMAN MELEWAR\n27500 RAUB",
+                                        'IC/Passport' => '661024-06-5297',
+                                        'Designation' => 'DIRECTOR',
+                                        'Date Of Appointment' => '24-05-2018',
+                                    ],
+                                ],
+                            ],
+                        ],
+                        'overall_confidence' => 1.0,
+                    ]),
+                ],
+            ]),
+        ]);
+
+        $document = Document::factory()->create([
+            'file_disk' => 'local',
+            'file_path' => 'documents/ssm.pdf',
+            'file_type' => 'application/pdf',
+            'original_file_name' => 'ssm.pdf',
+        ]);
+
+        (new ProcessDocumentWithRaraxuan($document))->handle();
+
+        // The name portion is emitted as its own "Name" field (address stripped),
+        // alongside the other officer columns.
+        $this->assertDatabaseHas(ExtractedField::class, [
+            'document_id' => $document->id,
+            'field_label' => 'Name',
+            'value' => 'WOH SAU HAA',
+        ]);
+        $this->assertDatabaseHas(ExtractedField::class, [
+            'document_id' => $document->id,
+            'field_label' => 'Ic',
+            'value' => '661024-06-5297',
+        ]);
+        $this->assertDatabaseHas(ExtractedField::class, [
+            'document_id' => $document->id,
+            'field_label' => 'Designation',
+            'value' => 'DIRECTOR',
+        ]);
+        $this->assertDatabaseHas(ExtractedField::class, [
+            'document_id' => $document->id,
+            'field_label' => 'Date Of Appointment',
+            'value' => '24-05-2018',
+        ]);
+    }
+
+    public function test_processing_keeps_the_uploader_selected_document_type(): void
+    {
+        config()->set('raraxuan.base_url', 'https://ai.raraxuan.test/api');
+        config()->set('raraxuan.api_key', 'rx_test_key');
+        config()->set('docuvault.raraxuan.document_agent', 'doc-universal-extractor');
+
+        Storage::fake('local');
+        Storage::disk('local')->put('documents/ssm.pdf', 'private document bytes');
+
+        // AI clearly detects an SSM document...
+        Http::fake([
+            'https://ai.raraxuan.test/api/v1/prompts/process' => Http::response([
+                'success' => true,
+                'data' => [
+                    'result' => json_encode([
+                        'document_type' => 'SSM Company Profile',
+                        'extracted_fields' => ['company_name' => 'AAD CONCEPT SDN BHD'],
+                        'overall_confidence' => 1.0,
+                    ]),
+                ],
+            ]),
+        ]);
+
+        // ...but the uploader explicitly chose General.
+        $document = Document::factory()->create([
+            'document_type' => 'general',
+            'file_disk' => 'local',
+            'file_path' => 'documents/ssm.pdf',
+            'file_type' => 'application/pdf',
+            'original_file_name' => 'ssm.pdf',
+        ]);
+
+        (new ProcessDocumentWithRaraxuan($document))->handle();
+
+        $this->assertSame('general', $document->refresh()->document_type);
+    }
+
+    public function test_only_ssm_documents_create_a_company(): void
+    {
+        config()->set('raraxuan.base_url', 'https://ai.raraxuan.test/api');
+        config()->set('raraxuan.api_key', 'rx_test_key');
+        config()->set('docuvault.raraxuan.document_agent', 'doc-universal-extractor');
+
+        Storage::fake('local');
+
+        Http::fake([
+            'https://ai.raraxuan.test/api/v1/prompts/process' => Http::response([
+                'success' => true,
+                'data' => [
+                    'result' => json_encode([
+                        'extracted_fields' => ['company_name' => 'AAD CONCEPT SDN BHD'],
+                        'overall_confidence' => 1.0,
+                    ]),
+                ],
+            ]),
+        ]);
+
+        $user = \App\Models\User::factory()->create();
+
+        // A non-SSM document with a company name must NOT create a company.
+        Storage::disk('local')->put('documents/general.pdf', 'bytes');
+        $general = Document::factory()->create([
+            'user_id' => $user->id,
+            'document_type' => 'general',
+            'file_disk' => 'local',
+            'file_path' => 'documents/general.pdf',
+            'file_type' => 'application/pdf',
+        ]);
+        (new ProcessDocumentWithRaraxuan($general))->handle();
+
+        $this->assertNull($general->refresh()->company_id);
+        $this->assertSame(0, Company::query()->count());
+
+        // The same content as an SSM document DOES create and link a company.
+        Storage::disk('local')->put('documents/ssm.pdf', 'bytes');
+        $ssm = Document::factory()->create([
+            'user_id' => $user->id,
+            'document_type' => 'ssm',
+            'file_disk' => 'local',
+            'file_path' => 'documents/ssm.pdf',
+            'file_type' => 'application/pdf',
+        ]);
+        (new ProcessDocumentWithRaraxuan($ssm))->handle();
+
+        $this->assertNotNull($ssm->refresh()->company_id);
+        $this->assertSame('AAD CONCEPT SDN BHD', $ssm->company->name);
+
+        // Now that the company exists, a non-SSM document with the same name
+        // (and owner) links to it (without creating another company).
+        Storage::disk('local')->put('documents/general2.pdf', 'bytes');
+        $general2 = Document::factory()->create([
+            'user_id' => $user->id,
+            'document_type' => 'general',
+            'file_disk' => 'local',
+            'file_path' => 'documents/general2.pdf',
+            'file_type' => 'application/pdf',
+        ]);
+        (new ProcessDocumentWithRaraxuan($general2))->handle();
+
+        $this->assertSame($ssm->company_id, $general2->refresh()->company_id);
+        $this->assertSame(1, Company::query()->count());
+    }
+
+    public function test_bank_account_document_syncs_a_bank_account_when_company_resolved(): void
+    {
+        config()->set('raraxuan.base_url', 'https://ai.raraxuan.test/api');
+        config()->set('raraxuan.api_key', 'rx_test_key');
+        config()->set('docuvault.raraxuan.document_agent', 'doc-universal-extractor');
+
+        Storage::fake('local');
+
+        $user = \App\Models\User::factory()->create();
+        $company = Company::factory()->create([
+            'user_id' => $user->id,
+            'name' => 'AAD CONCEPT SDN BHD',
+            'slug' => Company::slugFor('AAD CONCEPT SDN BHD'),
+        ]);
+
+        Storage::disk('local')->put('documents/bank.pdf', 'bytes');
+        Http::fake([
+            'https://ai.raraxuan.test/api/v1/prompts/process' => Http::response([
+                'success' => true,
+                'data' => ['result' => json_encode([
+                    'extracted_fields' => [
+                        'company_name' => 'AAD CONCEPT SDN BHD',
+                        'account_no' => '262205000947',
+                    ],
+                    'overall_confidence' => 0.98,
+                ])],
+            ]),
+        ]);
+        $bank = Document::factory()->create([
+            'user_id' => $user->id,
+            'document_type' => 'bank_account',
+            'file_disk' => 'local',
+            'file_path' => 'documents/bank.pdf',
+            'file_type' => 'application/pdf',
+        ]);
+        (new ProcessDocumentWithRaraxuan($bank))->handle();
+
+        $bankAccount = \App\Models\BankAccount::where('account_no', '262205000947')->first();
+        $this->assertNotNull($bankAccount);
+        $this->assertSame($company->id, $bankAccount->company_id);
     }
 
     public function test_processing_failure_marks_document_failed(): void
