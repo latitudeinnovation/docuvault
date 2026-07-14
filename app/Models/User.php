@@ -26,11 +26,7 @@ class User extends Authenticatable implements FilamentUser
             return false;
         }
 
-        $adminEmail = config('admin.user.email');
-
-        return is_string($adminEmail)
-            && strcasecmp((string) $this->email, $adminEmail) === 0
-            && $this->hasVerifiedEmail();
+        return $this->hasVerifiedEmail();
     }
 
     public function documents(): HasMany
