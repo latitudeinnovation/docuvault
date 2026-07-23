@@ -29,9 +29,13 @@ class DocumentExtractionClient
             ->post($this->endpoint(), $payload);
 
         if ($response->failed()) {
-            $message = $response->json('error.message') ?: $response->body();
+            $apiMessage = $response->json('error.message');
 
-            throw new RuntimeException("Raraxuan error: {$message}", $response->status());
+            $message = \is_string($apiMessage) && trim($apiMessage) !== ''
+                ? $apiMessage
+                : trim(\sprintf('%d %s', $response->status(), $response->reason()));
+
+            throw new RuntimeException("Document extraction failed: {$message}", $response->status());
         }
 
         return $response->json();
