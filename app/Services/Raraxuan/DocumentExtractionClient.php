@@ -22,13 +22,19 @@ class DocumentExtractionClient
     ): array {
         $payload = ['template' => $template] + $this->flattenVariables($variables);
 
-        return Http::withToken($this->apiKey())
+        $response = Http::withToken($this->apiKey())
             ->acceptJson()
             ->timeout($this->timeout())
             ->attach('file', $fileContents, $filename, ['Content-Type' => $mimeType])
-            ->post($this->endpoint(), $payload)
-            ->throw()
-            ->json();
+            ->post($this->endpoint(), $payload);
+
+        if ($response->failed()) {
+            $message = $response->json('error.message') ?: $response->body();
+
+            throw new RuntimeException("Raraxuan error: {$message}", $response->status());
+        }
+
+        return $response->json();
     }
 
     /**
