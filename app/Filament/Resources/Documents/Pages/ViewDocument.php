@@ -104,6 +104,15 @@ class ViewDocument extends ViewRecord
                 ->button()
                 ->requiresConfirmation()
                 ->action(function (Document $record): void {
+                    if (! $record->shouldExtract()) {
+                        Notification::make()
+                            ->success()
+                            ->title('General document — no extraction needed')
+                            ->send();
+
+                        return;
+                    }
+
                     $record->forceFill([
                         'status' => DocumentStatus::Processing,
                         'failure_reason' => null,

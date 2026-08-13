@@ -58,14 +58,18 @@ class CreateDocument extends CreateRecord
 
         $mimeType = Storage::disk($record->file_disk)->mimeType($record->file_path);
 
+        // General documents are never extracted, so "Save & Process" behaves
+        // like a plain save — no queued job, and it stays Uploaded.
+        $willProcess = $this->shouldProcess && $record->shouldExtract();
+
         $record->forceFill([
             'file_type' => $mimeType ?: $record->file_type,
             // Reflect "Processing" right away so the view page doesn't show
             // "Uploaded" until the queued job is picked up.
-            'status' => $this->shouldProcess ? DocumentStatus::Processing : $record->status,
+            'status' => $willProcess ? DocumentStatus::Processing : $record->status,
         ])->save();
 
-        if ($this->shouldProcess) {
+        if ($willProcess) {
             ProcessDocumentWithRaraxuan::dispatch($record);
         }
     }

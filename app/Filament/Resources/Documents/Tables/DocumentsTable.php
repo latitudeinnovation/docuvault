@@ -6,6 +6,7 @@ use App\Enums\DocumentStatus;
 use App\Enums\ExtractedFieldStatus;
 use App\Jobs\ProcessDocumentWithRaraxuan;
 use App\Models\Document;
+use App\Models\DocumentType;
 use Filament\Actions\Action;
 use Filament\Actions\ActionGroup;
 use Filament\Actions\BulkActionGroup;
@@ -37,9 +38,9 @@ class DocumentsTable
                 TextColumn::make('document_type')
                     ->label('Type')
                     ->badge()
-                    ->formatStateUsing(fn (?string $state): string => \App\Models\DocumentType::resolve($state)->label)
-                    ->color(fn (?string $state): string => \App\Models\DocumentType::resolve($state)->color)
-                    ->icon(fn (?string $state): string => \App\Models\DocumentType::resolve($state)->icon)
+                    ->formatStateUsing(fn (?string $state): string => DocumentType::resolve($state)->label)
+                    ->color(fn (?string $state): string => DocumentType::resolve($state)->color)
+                    ->icon(fn (?string $state): string => DocumentType::resolve($state)->icon)
                     ->searchable()
                     ->sortable(),
                 TextColumn::make('status')
@@ -65,11 +66,11 @@ class DocumentsTable
                     ->options(DocumentStatus::class),
                 SelectFilter::make('document_type')
                     ->label('Type')
-                    ->options(fn(): array => Document::query()
+                    ->options(fn (): array => Document::query()
                         ->distinct()
                         ->orderBy('document_type')
                         ->pluck('document_type')
-                        ->mapWithKeys(fn (?string $key): array => [$key => \App\Models\DocumentType::resolve($key)->label])
+                        ->mapWithKeys(fn (?string $key): array => [$key => DocumentType::resolve($key)->label])
                         ->all()),
             ])
             ->recordActions([
@@ -77,7 +78,7 @@ class DocumentsTable
                 ActionGroup::make([
                     Action::make('download')
                         ->icon(Heroicon::ArrowDownTray)
-                        ->action(fn(Document $record) => Storage::disk($record->file_disk)->download(
+                        ->action(fn (Document $record) => Storage::disk($record->file_disk)->download(
                             $record->file_path,
                             $record->original_file_name ?: basename($record->file_path),
                         )),
@@ -87,6 +88,15 @@ class DocumentsTable
                         ->color('info')
                         ->requiresConfirmation()
                         ->action(function (Document $record): void {
+                            if (! $record->shouldExtract()) {
+                                Notification::make()
+                                    ->success()
+                                    ->title('General document — no extraction needed')
+                                    ->send();
+
+                                return;
+                            }
+
                             ProcessDocumentWithRaraxuan::dispatch($record);
 
                             Notification::make()
@@ -98,8 +108,8 @@ class DocumentsTable
                         ->icon(Heroicon::CheckCircle)
                         ->color('success')
                         ->requiresConfirmation()
-                        ->visible(fn(Document $record): bool => $record->extractedFields()->exists()
-                            && !$record->extractedFields()
+                        ->visible(fn (Document $record): bool => $record->extractedFields()->exists()
+                            && ! $record->extractedFields()
                                 ->where('status', ExtractedFieldStatus::Pending->value)
                                 ->exists())
                         ->action(function (Document $record): void {

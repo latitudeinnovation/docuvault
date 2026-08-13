@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\DocumentStatus;
+use App\Enums\DocumentType;
 use Database\Factories\DocumentFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -10,6 +11,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Str;
 
 #[Fillable([
     'user_id',
@@ -57,6 +59,16 @@ class Document extends Model
     }
 
     /**
+     * Whether this document should be sent to the AI for field extraction.
+     * General documents are stored as-is (just the uploaded PDF/image) and
+     * never extracted, so processing them is a no-op.
+     */
+    public function shouldExtract(): bool
+    {
+        return $this->document_type !== DocumentType::General->value;
+    }
+
+    /**
      * The date this document "covers" — for a bank statement, the start of its
      * statement period; otherwise its document date, falling back to when it
      * was processed. Used to group statements by month.
@@ -74,7 +86,7 @@ class Document extends Model
 
         foreach ($candidateKeys as $key) {
             $field = $this->extractedFields
-                ->first(fn (ExtractedField $f): bool => str_contains(strtolower((string) $f->field_key), $key));
+                ->first(fn (ExtractedField $f): bool => str_contains($this->normalizeFieldKey((string) $f->field_key), $key));
 
             $value = trim((string) ($field?->corrected_value ?? $field?->value ?? ''));
 
@@ -82,8 +94,11 @@ class Document extends Model
                 continue;
             }
 
-            // "01 February 2024 To 29 February 2024" — take start date only.
-            if (preg_match('/^(.+?)\s+to\s+/i', $value, $m)) {
+            // Statement periods arrive as ranges — "01 February 2024 To 29
+            // February 2024", "16 Jan 25 – 31 Jan 25". Keep the start date
+            // only. Whitespace is required around a dash so a day-first single
+            // date like "31-12-2023" is not split mid-value.
+            if (preg_match('/^(.+?)\s+(?:to|till|until|[-–—])\s+/iu', $value, $m)) {
                 $value = trim($m[1]);
             }
 
@@ -93,6 +108,19 @@ class Document extends Model
         }
 
         return $this->processed_at;
+    }
+
+    /**
+     * Normalize an extracted field key for matching: last dotted segment,
+     * lowercased, non-alphanumerics collapsed to underscores. Mirrors
+     * BankAccountExtractor so a key arriving as "Statement Period" or
+     * "ACCOUNT SUMMARY.STATEMENT PERIOD" still matches "statement_period".
+     */
+    private function normalizeFieldKey(string $key): string
+    {
+        $segment = Str::afterLast($key, '.');
+
+        return trim(preg_replace('/[^a-z0-9]+/', '_', Str::lower($segment)) ?? '', '_');
     }
 
     /**
