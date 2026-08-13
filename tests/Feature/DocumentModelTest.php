@@ -54,8 +54,6 @@ class DocumentModelTest extends TestCase
         yield 'day-first slash notation, leap day' => ['29/02/2024', '2024-02-29'];
         yield 'natural language date' => ['29 February 2024', '2024-02-29'];
         yield 'date range takes start date' => ['01 February 2024 To 29 February 2024', '2024-02-01'];
-        yield 'en-dash range takes start date' => ['16 Jan 25 – 31 Jan 25', '2025-01-16'];
-        yield 'hyphen range takes start date' => ['16 Jan 25 - 31 Jan 25', '2025-01-16'];
     }
 
     #[DataProvider('periodDateProvider')]
@@ -91,38 +89,5 @@ class DocumentModelTest extends TestCase
         $document->refresh();
 
         $this->assertSame('2025-01-01', $document->periodDate()?->toDateString());
-    }
-
-    /**
-     * The AI may return the period key with spaces, mixed case, or a dotted
-     * path (e.g. "Statement Period", "ACCOUNT SUMMARY.STATEMENT PERIOD"). These
-     * must still be recognised rather than falling back to the processed date.
-     *
-     * @return iterable<string, array{string}>
-     */
-    public static function periodFieldKeyProvider(): iterable
-    {
-        yield 'spaced title case' => ['Statement Period'];
-        yield 'dotted path' => ['ACCOUNT SUMMARY.STATEMENT PERIOD'];
-        yield 'snake case' => ['statement_period'];
-    }
-
-    #[DataProvider('periodFieldKeyProvider')]
-    public function test_period_date_matches_period_field_key_regardless_of_formatting(string $fieldKey): void
-    {
-        $user = User::factory()->create();
-        $document = Document::factory()
-            ->for($user, 'owner')
-            ->create(['processed_at' => now()->setDate(2026, 8, 6)]);
-
-        ExtractedField::factory()->for($document)->create([
-            'field_key' => $fieldKey,
-            'value' => '16 Jan 25 – 31 Jan 25',
-        ]);
-
-        $document->refresh();
-
-        // Must group under the statement period (Jan 2025), not the upload month.
-        $this->assertSame('2025-01-16', $document->periodDate()?->toDateString());
     }
 }

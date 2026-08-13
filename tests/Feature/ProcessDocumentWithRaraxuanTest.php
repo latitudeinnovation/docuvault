@@ -5,11 +5,9 @@ namespace Tests\Feature;
 use App\Enums\DocumentStatus;
 use App\Enums\ExtractedFieldStatus;
 use App\Jobs\ProcessDocumentWithRaraxuan;
-use App\Models\BankAccount;
 use App\Models\Company;
 use App\Models\Document;
 use App\Models\ExtractedField;
-use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
@@ -45,7 +43,6 @@ class ProcessDocumentWithRaraxuanTest extends TestCase
         ]);
 
         $document = Document::factory()->create([
-            'document_type' => 'bank_account',
             'file_disk' => 'local',
             'file_path' => 'documents/sample.pdf',
             'file_type' => 'application/pdf',
@@ -125,7 +122,6 @@ class ProcessDocumentWithRaraxuanTest extends TestCase
         ]);
 
         $document = Document::factory()->create([
-            'document_type' => 'bank_account',
             'file_disk' => 'local',
             'file_path' => 'documents/statement.pdf',
             'file_type' => 'application/pdf',
@@ -197,7 +193,6 @@ class ProcessDocumentWithRaraxuanTest extends TestCase
         ]);
 
         $document = Document::factory()->create([
-            'document_type' => 'ssm',
             'file_disk' => 'local',
             'file_path' => 'documents/ssm.pdf',
             'file_type' => 'application/pdf',
@@ -278,7 +273,6 @@ class ProcessDocumentWithRaraxuanTest extends TestCase
         ]);
 
         $document = Document::factory()->create([
-            'document_type' => 'ssm',
             'file_disk' => 'local',
             'file_path' => 'documents/ssm.pdf',
             'file_type' => 'application/pdf',
@@ -334,9 +328,9 @@ class ProcessDocumentWithRaraxuanTest extends TestCase
             ]),
         ]);
 
-        // ...but the uploader explicitly chose Bank Account.
+        // ...but the uploader explicitly chose General.
         $document = Document::factory()->create([
-            'document_type' => 'bank_account',
+            'document_type' => 'general',
             'file_disk' => 'local',
             'file_path' => 'documents/ssm.pdf',
             'file_type' => 'application/pdf',
@@ -345,7 +339,7 @@ class ProcessDocumentWithRaraxuanTest extends TestCase
 
         (new ProcessDocumentWithRaraxuan($document))->handle();
 
-        $this->assertSame('bank_account', $document->refresh()->document_type);
+        $this->assertSame('general', $document->refresh()->document_type);
     }
 
     public function test_only_ssm_documents_create_a_company(): void
@@ -368,20 +362,20 @@ class ProcessDocumentWithRaraxuanTest extends TestCase
             ]),
         ]);
 
-        $user = User::factory()->create();
+        $user = \App\Models\User::factory()->create();
 
         // A non-SSM document with a company name must NOT create a company.
-        Storage::disk('local')->put('documents/bank.pdf', 'bytes');
-        $bank = Document::factory()->create([
+        Storage::disk('local')->put('documents/general.pdf', 'bytes');
+        $general = Document::factory()->create([
             'user_id' => $user->id,
-            'document_type' => 'bank_account',
+            'document_type' => 'general',
             'file_disk' => 'local',
-            'file_path' => 'documents/bank.pdf',
+            'file_path' => 'documents/general.pdf',
             'file_type' => 'application/pdf',
         ]);
-        (new ProcessDocumentWithRaraxuan($bank))->handle();
+        (new ProcessDocumentWithRaraxuan($general))->handle();
 
-        $this->assertNull($bank->refresh()->company_id);
+        $this->assertNull($general->refresh()->company_id);
         $this->assertSame(0, Company::query()->count());
 
         // The same content as an SSM document DOES create and link a company.
@@ -400,17 +394,17 @@ class ProcessDocumentWithRaraxuanTest extends TestCase
 
         // Now that the company exists, a non-SSM document with the same name
         // (and owner) links to it (without creating another company).
-        Storage::disk('local')->put('documents/bank2.pdf', 'bytes');
-        $bank2 = Document::factory()->create([
+        Storage::disk('local')->put('documents/general2.pdf', 'bytes');
+        $general2 = Document::factory()->create([
             'user_id' => $user->id,
-            'document_type' => 'bank_account',
+            'document_type' => 'general',
             'file_disk' => 'local',
-            'file_path' => 'documents/bank2.pdf',
+            'file_path' => 'documents/general2.pdf',
             'file_type' => 'application/pdf',
         ]);
-        (new ProcessDocumentWithRaraxuan($bank2))->handle();
+        (new ProcessDocumentWithRaraxuan($general2))->handle();
 
-        $this->assertSame($ssm->company_id, $bank2->refresh()->company_id);
+        $this->assertSame($ssm->company_id, $general2->refresh()->company_id);
         $this->assertSame(1, Company::query()->count());
     }
 
@@ -422,7 +416,7 @@ class ProcessDocumentWithRaraxuanTest extends TestCase
 
         Storage::fake('local');
 
-        $user = User::factory()->create();
+        $user = \App\Models\User::factory()->create();
         $company = Company::factory()->create([
             'user_id' => $user->id,
             'name' => 'AAD CONCEPT SDN BHD',
@@ -451,7 +445,7 @@ class ProcessDocumentWithRaraxuanTest extends TestCase
         ]);
         (new ProcessDocumentWithRaraxuan($bank))->handle();
 
-        $bankAccount = BankAccount::where('account_no', '262205000947')->first();
+        $bankAccount = \App\Models\BankAccount::where('account_no', '262205000947')->first();
         $this->assertNotNull($bankAccount);
         $this->assertSame($company->id, $bankAccount->company_id);
     }
@@ -461,7 +455,6 @@ class ProcessDocumentWithRaraxuanTest extends TestCase
         Storage::fake('local');
 
         $document = Document::factory()->create([
-            'document_type' => 'bank_account',
             'file_disk' => 'local',
             'file_path' => 'documents/missing.pdf',
         ]);
@@ -469,30 +462,5 @@ class ProcessDocumentWithRaraxuanTest extends TestCase
         (new ProcessDocumentWithRaraxuan($document))->handle();
 
         $this->assertSame(DocumentStatus::Failed, $document->refresh()->status);
-    }
-
-    public function test_general_documents_are_not_extracted(): void
-    {
-        Storage::fake('local');
-        Storage::disk('local')->put('documents/general.pdf', 'general document bytes');
-        Http::fake();
-
-        $document = Document::factory()->create([
-            'document_type' => 'general',
-            'status' => DocumentStatus::Uploaded,
-            'file_disk' => 'local',
-            'file_path' => 'documents/general.pdf',
-            'file_type' => 'application/pdf',
-        ]);
-
-        (new ProcessDocumentWithRaraxuan($document))->handle();
-
-        // No AI call, no extracted fields, and it stays Uploaded.
-        Http::assertNothingSent();
-
-        $document->refresh();
-        $this->assertSame(DocumentStatus::Uploaded, $document->status);
-        $this->assertNull($document->processed_at);
-        $this->assertSame(0, $document->extractedFields()->count());
     }
 }

@@ -6,10 +6,10 @@ use App\Enums\DocumentStatus;
 use App\Enums\DocumentType;
 use App\Enums\ExtractedFieldStatus;
 use App\Models\Document;
-use App\Services\Documents\BankAccountExtractor;
 use App\Services\Documents\DirectorExtractor;
-use App\Services\Documents\DocumentClassifier;
 use App\Services\Documents\ShareholderExtractor;
+use App\Services\Documents\BankAccountExtractor;
+use App\Services\Documents\DocumentClassifier;
 use App\Services\Raraxuan\DocumentExtractionClient;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
@@ -58,17 +58,6 @@ class ProcessDocumentWithRaraxuan implements ShouldQueue
 
     private function process(Document $document): void
     {
-        // General documents need no AI extraction — the uploaded PDF/image is
-        // the deliverable. Leave it in its Uploaded state and skip the API call.
-        if (! $document->shouldExtract()) {
-            $document->forceFill([
-                'status' => DocumentStatus::Uploaded,
-                'failure_reason' => null,
-            ])->save();
-
-            return;
-        }
-
         $document->forceFill([
             'status' => DocumentStatus::Processing,
             'failure_reason' => null,

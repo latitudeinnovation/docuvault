@@ -47,7 +47,6 @@ class ProcessDocumentWithRaraxuanCommandTest extends TestCase
         ]);
 
         $document = Document::factory()->create([
-            'document_type' => 'bank_account',
             'file_disk' => 'local',
             'file_path' => 'documents/sample.pdf',
             'status' => DocumentStatus::Uploaded,
