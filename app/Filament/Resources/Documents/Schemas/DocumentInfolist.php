@@ -23,8 +23,10 @@ class DocumentInfolist
     {
         return $schema
             ->components([
+                // General docs stack full width (Document over File); other types
+                // sit half-width beside the JSON Format section.
                 Section::make('Document')
-                    ->columnSpanFull()
+                    ->columnSpan(fn (Document $record): int|string => $record->shouldExtract() ? 1 : 'full')
                     ->schema([
                         TextEntry::make('title'),
                         TextEntry::make('owner.name')

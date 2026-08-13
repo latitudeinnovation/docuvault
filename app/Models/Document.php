@@ -125,17 +125,23 @@ class Document extends Model
 
     /**
      * Parse a raw extracted date string that may be in day-first slash/dash
-     * notation (e.g. "31/12/2023", as used by MY bank statements) — a format
-     * Carbon::parse() misreads as US month-first and rejects — before falling
-     * back to Carbon's general parser for other formats (e.g. "29 February 2024").
+     * notation (e.g. "31/12/2023" or "01/12/22", as used by MY bank statements)
+     * — a format Carbon::parse() misreads as US month-first and rejects — before
+     * falling back to Carbon's general parser for other formats (e.g. "29
+     * February 2024").
      */
     private function parseDateValue(string $value): ?Carbon
     {
-        foreach (['d/m/Y', 'd-m-Y'] as $format) {
+        // Day-first slash/dash date. Pick the year format by its digit count so a
+        // 2-digit year like "22" is read as 2022, not year 0022.
+        if (preg_match('#^(\d{1,2})[/-](\d{1,2})[/-](\d{2}|\d{4})$#', $value, $m)) {
+            $format = strlen($m[3]) === 2 ? 'd/m/y' : 'd/m/Y';
+            $normalized = sprintf('%02d/%02d/%s', (int) $m[1], (int) $m[2], $m[3]);
+
             try {
-                return Carbon::createFromFormat($format, $value)->startOfDay();
+                return Carbon::createFromFormat($format, $normalized)->startOfDay();
             } catch (\Throwable) {
-                // Doesn't match this explicit format — try the next one.
+                // Not a valid day-first date — fall through to the general parser.
             }
         }
 
