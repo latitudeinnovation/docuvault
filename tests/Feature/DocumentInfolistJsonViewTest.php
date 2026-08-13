@@ -20,6 +20,7 @@ class DocumentInfolistJsonViewTest extends TestCase
         $this->actingAs($user);
 
         $document = Document::factory()->create([
+            'document_type' => 'bank_account',
             'status' => DocumentStatus::NeedsReview,
             'ai_raw_json' => [
                 'success' => true,
@@ -40,5 +41,25 @@ class DocumentInfolistJsonViewTest extends TestCase
         Livewire::test(ViewDocument::class, ['record' => $document->getRouteKey()])
             ->assertSee('8881051766214')
             ->assertSee('ACCOUNT STATEMENT');
+    }
+
+    public function test_general_document_view_shows_inline_file_preview_and_hides_json(): void
+    {
+        $user = User::factory()->create();
+        $this->actingAs($user);
+
+        $document = Document::factory()->create([
+            'document_type' => 'general',
+            'status' => DocumentStatus::Uploaded,
+            'file_path' => 'documents/receipt.pdf',
+            'file_type' => 'application/pdf',
+            'ai_raw_json' => null,
+        ]);
+
+        Livewire::test(ViewDocument::class, ['record' => $document->getRouteKey()])
+            // The uploaded file is embedded via the preview route...
+            ->assertSee(route('documents.preview', $document))
+            // ...and the (empty) extraction JSON section is not rendered.
+            ->assertDontSee('JSON Format');
     }
 }

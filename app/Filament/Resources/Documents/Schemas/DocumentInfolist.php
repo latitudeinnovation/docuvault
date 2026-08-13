@@ -3,10 +3,12 @@
 namespace App\Filament\Resources\Documents\Schemas;
 
 use App\Enums\DocumentStatus;
+use App\Enums\DocumentType;
 use App\Models\Document;
 use App\Support\JsonPresenter;
 use Filament\Actions\Action;
 use Filament\Infolists\Components\TextEntry;
+use Filament\Infolists\Components\ViewEntry;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Components\Tabs;
 use Filament\Schemas\Components\Tabs\Tab;
@@ -21,7 +23,10 @@ class DocumentInfolist
     {
         return $schema
             ->components([
+                // General docs stack full width (Document over File); other types
+                // sit half-width beside the JSON Format section.
                 Section::make('Document')
+                    ->columnSpan(fn (Document $record): int|string => $record->shouldExtract() ? 1 : 'full')
                     ->schema([
                         TextEntry::make('title'),
                         TextEntry::make('owner.name')
@@ -55,7 +60,19 @@ class DocumentInfolist
                     ])
                     ->columns(2),
 
+                // General documents carry no extracted data — the uploaded file
+                // is the point, so show it inline below the metadata.
+                Section::make('File')
+                    ->columnSpanFull()
+                    ->visible(fn (Document $record): bool => $record->document_type === DocumentType::General->value)
+                    ->schema([
+                        ViewEntry::make('file_preview')
+                            ->hiddenLabel()
+                            ->view('filament.documents.file-preview'),
+                    ]),
+
                 Section::make('JSON Format')
+                    ->visible(fn (Document $record): bool => $record->shouldExtract())
                     ->headerActions([
                         Action::make('viewJson')
                             ->label('View JSON')

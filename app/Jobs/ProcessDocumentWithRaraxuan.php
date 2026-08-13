@@ -6,10 +6,10 @@ use App\Enums\DocumentStatus;
 use App\Enums\DocumentType;
 use App\Enums\ExtractedFieldStatus;
 use App\Models\Document;
-use App\Services\Documents\DirectorExtractor;
-use App\Services\Documents\ShareholderExtractor;
 use App\Services\Documents\BankAccountExtractor;
+use App\Services\Documents\DirectorExtractor;
 use App\Services\Documents\DocumentClassifier;
+use App\Services\Documents\ShareholderExtractor;
 use App\Services\Raraxuan\DocumentExtractionClient;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
@@ -58,6 +58,17 @@ class ProcessDocumentWithRaraxuan implements ShouldQueue
 
     private function process(Document $document): void
     {
+        // General documents need no AI extraction — the uploaded PDF/image is
+        // the deliverable. Leave it in its Uploaded state and skip the API call.
+        if (! $document->shouldExtract()) {
+            $document->forceFill([
+                'status' => DocumentStatus::Uploaded,
+                'failure_reason' => null,
+            ])->save();
+
+            return;
+        }
+
         $document->forceFill([
             'status' => DocumentStatus::Processing,
             'failure_reason' => null,
@@ -141,14 +152,107 @@ class ProcessDocumentWithRaraxuan implements ShouldQueue
         $result = data_get($response, 'data.result');
 
         if (is_string($result)) {
-            $decodedResult = json_decode($result, true);
+            $decodedResult = $this->decodeJsonLoose($result);
 
-            if (json_last_error() === JSON_ERROR_NONE && is_array($decodedResult)) {
+            if (is_array($decodedResult)) {
                 return $decodedResult;
             }
         }
 
         return $response;
+    }
+
+    /**
+     * Decode the AI `result` string, tolerating a truncated payload.
+     *
+     * The provider occasionally returns the extraction JSON without its trailing
+     * closing brace(s) — e.g. it ends at `"overall_confidence": 1.0` with no `}`.
+     * A strict json_decode fails on that, which used to make us fall back to
+     * flattening the raw API envelope (surfacing junk fields like "Request Id"
+     * and "Result"). Repairing the unclosed brackets recovers the real fields.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function decodeJsonLoose(string $json): ?array
+    {
+        $decoded = json_decode($json, true);
+
+        if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
+            return $decoded;
+        }
+
+        $repaired = $this->repairTruncatedJson($json);
+
+        if ($repaired !== $json) {
+            $decoded = json_decode($repaired, true);
+
+            if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
+                return $decoded;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Best-effort repair of a truncated JSON object/array by closing any brackets
+     * left open. Scans outside of string literals, tracks the `{`/`[` nesting, and
+     * appends the matching closers (dropping a dangling trailing comma first).
+     */
+    private function repairTruncatedJson(string $json): string
+    {
+        $stack = [];
+        $inString = false;
+        $escaped = false;
+        $length = strlen($json);
+
+        for ($i = 0; $i < $length; $i++) {
+            $char = $json[$i];
+
+            if ($inString) {
+                if ($escaped) {
+                    $escaped = false;
+                } elseif ($char === '\\') {
+                    $escaped = true;
+                } elseif ($char === '"') {
+                    $inString = false;
+                }
+
+                continue;
+            }
+
+            if ($char === '"') {
+                $inString = true;
+            } elseif ($char === '{' || $char === '[') {
+                $stack[] = $char;
+            } elseif ($char === '}' || $char === ']') {
+                array_pop($stack);
+            }
+        }
+
+        // Nothing was left open — the string is malformed for another reason.
+        if ($stack === [] && ! $inString) {
+            return $json;
+        }
+
+        $repaired = $json;
+
+        // A partial string literal can't be recovered meaningfully; bail out.
+        if ($inString) {
+            return $json;
+        }
+
+        // Drop a trailing comma so the appended closer stays valid JSON.
+        $trimmed = rtrim($repaired);
+        if (str_ends_with($trimmed, ',')) {
+            $repaired = substr($trimmed, 0, -1);
+        }
+
+        while ($stack !== []) {
+            $repaired .= array_pop($stack) === '{' ? '}' : ']';
+        }
+
+        return $repaired;
     }
 
     /**

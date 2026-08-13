@@ -97,6 +97,47 @@ class ViewDocument extends ViewRecord
                         ->title("Linked to {$company->name} and synced.")
                         ->send();
                 }),
+            Action::make('linkCompany')
+                ->label('Link to Company')
+                ->icon(Heroicon::Link)
+                ->color('warning')
+                ->button()
+                ->visible(fn (Document $record): bool => ! $record->shouldExtract())
+                ->schema(fn (Document $record): array => [
+                    Select::make('company_id')
+                        ->label('Company')
+                        ->options(fn (): array => Company::query()
+                            ->where('user_id', $record->user_id)
+                            ->pluck('name', 'id')
+                            ->all())
+                        ->default($record->company_id)
+                        ->searchable()
+                        ->required()
+                        ->createOptionForm([
+                            TextInput::make('name')
+                                ->label('Company Name')
+                                ->required()
+                                ->maxLength(255),
+                            TextInput::make('registration_no')
+                                ->label('Registration No.'),
+                        ])
+                        ->createOptionUsing(fn (array $data): int => Company::create([
+                            'user_id' => $record->user_id,
+                            'name' => $data['name'],
+                            'slug' => Company::slugFor($data['name']),
+                            'registration_no' => $data['registration_no'] ?? null,
+                        ])->getKey()),
+                ])
+                ->action(function (Document $record, array $data): void {
+                    $company = Company::query()->findOrFail($data['company_id']);
+
+                    $record->update(['company_id' => $company->getKey()]);
+
+                    Notification::make()
+                        ->success()
+                        ->title("Linked to {$company->name}.")
+                        ->send();
+                }),
             Action::make('reprocess')
                 ->label('Process')
                 ->icon(Heroicon::ArrowPath)
@@ -104,6 +145,15 @@ class ViewDocument extends ViewRecord
                 ->button()
                 ->requiresConfirmation()
                 ->action(function (Document $record): void {
+                    if (! $record->shouldExtract()) {
+                        Notification::make()
+                            ->success()
+                            ->title('General document — no extraction needed')
+                            ->send();
+
+                        return;
+                    }
+
                     $record->forceFill([
                         'status' => DocumentStatus::Processing,
                         'failure_reason' => null,
