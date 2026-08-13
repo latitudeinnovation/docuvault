@@ -11,10 +11,19 @@ use Filament\Forms\Components\TextInput;
 use Filament\Resources\RelationManagers\RelationManager;
 use Filament\Schemas\Schema;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Model;
 
 class ExtractedFieldsRelationManager extends RelationManager
 {
     protected static string $relationship = 'extractedFields';
+
+    /**
+     * Hide extracted fields for General documents, which skip extraction.
+     */
+    public static function canViewForRecord(Model $ownerRecord, string $pageClass): bool
+    {
+        return $ownerRecord->shouldExtract();
+    }
 
     public function isReadOnly(): bool
     {

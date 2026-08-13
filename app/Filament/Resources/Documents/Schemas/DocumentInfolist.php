@@ -23,17 +23,8 @@ class DocumentInfolist
     {
         return $schema
             ->components([
-                // General documents carry no extracted data — the uploaded file
-                // is the point, so show it inline above the metadata.
-                Section::make('File')
-                    ->visible(fn (Document $record): bool => $record->document_type === DocumentType::General->value)
-                    ->schema([
-                        ViewEntry::make('file_preview')
-                            ->hiddenLabel()
-                            ->view('filament.documents.file-preview'),
-                    ]),
-
                 Section::make('Document')
+                    ->columnSpanFull()
                     ->schema([
                         TextEntry::make('title'),
                         TextEntry::make('owner.name')
@@ -66,6 +57,17 @@ class DocumentInfolist
                             ->dateTime(),
                     ])
                     ->columns(2),
+
+                // General documents carry no extracted data — the uploaded file
+                // is the point, so show it inline below the metadata.
+                Section::make('File')
+                    ->columnSpanFull()
+                    ->visible(fn (Document $record): bool => $record->document_type === DocumentType::General->value)
+                    ->schema([
+                        ViewEntry::make('file_preview')
+                            ->hiddenLabel()
+                            ->view('filament.documents.file-preview'),
+                    ]),
 
                 Section::make('JSON Format')
                     ->visible(fn (Document $record): bool => $record->shouldExtract())

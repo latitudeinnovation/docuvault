@@ -79,6 +79,18 @@
                             </div>
                         @endforeach
                     </div>
+                @elseif ($key === DocumentTypeEnum::General->value)
+                    {{-- General documents carry no extracted data — show the uploaded
+                         file. Newest expanded, older collapsed; all manually toggleable. --}}
+                    <div style="display:flex;flex-direction:column;gap:2rem">
+                        @foreach ($groups[$key]->sortByDesc('created_at')->values() as $document)
+                            @include('filament.companies._document-file', [
+                                'document' => $document,
+                                'collapsible' => true,
+                                'collapsed' => ! $loop->first,
+                            ])
+                        @endforeach
+                    </div>
                 @else
                     {{-- SSM / other types: newest record expanded, older records collapsed --}}
                     <div style="display:flex;flex-direction:column;gap:2rem">

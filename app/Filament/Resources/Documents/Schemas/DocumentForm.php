@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\Documents\Schemas;
 
 use App\Enums\DocumentStatus;
+use App\Enums\DocumentType;
 use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Components\Hidden;
 use Filament\Forms\Components\Select;
@@ -10,6 +11,7 @@ use Filament\Forms\Components\TextInput;
 use Filament\Schemas\Components\Grid;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
+use Illuminate\Database\Eloquent\Builder;
 
 class DocumentForm
 {
@@ -38,6 +40,7 @@ class DocumentForm
                                 ->options(fn (): array => \App\Models\DocumentType::selectOptions())
                                 ->placeholder('Select a document type')
                                 ->required()
+                                ->live()
                                 ->columnSpan(1),
 
                             Hidden::make('status')
@@ -49,6 +52,20 @@ class DocumentForm
                                 ->required()
                                 ->columnSpan(1)
                                 ->visibleOn('edit'),
+
+                            Select::make('company_id')
+                                ->label('Company')
+                                ->visible(fn (callable $get): bool => $get('document_type') === DocumentType::General->value)
+                                ->relationship(
+                                    'company',
+                                    'name',
+                                    fn (Builder $query, callable $get): Builder => $query
+                                        ->when($get('user_id'), fn (Builder $q, $userId): Builder => $q->where('user_id', $userId)),
+                                )
+                                ->searchable()
+                                ->preload()
+                                ->placeholder('Not linked')
+                                ->columnSpan(1),
                         ]),
 
                         FileUpload::make('file_path')
