@@ -1,13 +1,22 @@
 @php
     use App\Models\DocumentType;
-    use App\Support\JsonPresenter;
 
     /** @var \App\Models\Document $document */
     $fields = $document->extractedFields;
-    $json = JsonPresenter::pretty(JsonPresenter::normalized($document)) ?? '';
 
     $type = DocumentType::resolve($document->document_type);
     $confidence = $document->ai_confidence !== null ? (int) round(((float) $document->ai_confidence) * 100) : null;
+
+    // Plain-text copy — one "Label: value" per line so a client can read it.
+    $plainText = $fields
+        ->map(function ($field) {
+            $value = trim((string) ($field->corrected_value ?? $field->value ?? ''));
+            $isMoney = (bool) preg_match('/balance|amount|total|capital|debit|credit/i', (string) $field->field_key);
+            $display = ($isMoney && $value !== '' && preg_match('/^[\d.,]+$/', $value)) ? 'RM '.$value : $value;
+
+            return $field->field_label.': '.($display !== '' ? $display : '—');
+        })
+        ->implode("\n");
 
     $collapsible ??= false;
     $collapsed ??= false;
@@ -27,7 +36,7 @@
     </x-slot>
 
     <x-slot name="afterHeader">
-        <div x-data="{ copied: false, json: @js($json) }" style="display:flex;align-items:center;gap:0.5rem">
+        <div x-data="{ copied: false, text: @js($plainText) }" style="display:flex;align-items:center;gap:0.5rem">
             @if ($confidence !== null)
                 <x-filament::badge :color="$confidence >= 90 ? 'success' : ($confidence >= 70 ? 'warning' : 'danger')">
                     {{ $confidence }}% confidence
@@ -38,9 +47,9 @@
                 size="xs"
                 color="gray"
                 icon="heroicon-m-clipboard-document"
-                x-on:click="navigator.clipboard.writeText(json).then(() => { copied = true; setTimeout(() => copied = false, 1500) })"
+                x-on:click="navigator.clipboard.writeText(text).then(() => { copied = true; setTimeout(() => copied = false, 1500) })"
             >
-                <span x-show="! copied">Copy JSON</span>
+                <span x-show="! copied">Copy text</span>
                 <span x-show="copied" x-cloak>Copied!</span>
             </x-filament::button>
         </div>
